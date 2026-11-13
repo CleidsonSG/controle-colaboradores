@@ -4,11 +4,13 @@
 **Pasta:** `Controle_Colaboradores`  
 **Plano:** [controle-colaboradores.md](./controle-colaboradores.md)
 
-## Importação v2 (2026-11-13, sem commit, aguardando prévia/autorização)
+## Importação v2 + redesign (2026-11-13, commit local, aguardando autorização de publicação)
 
 Diretriz e decisões do usuário: [docs/DIRETRIZ-IMPORTACAO-V2.md](docs/DIRETRIZ-IMPORTACAO-V2.md). CSV e-Cidade (windows-1252, cabeçalho na linha 5) e planilha XLSX/XLSM (só as 2 primeiras abas, fusão com Origem); "Tipo de carga" e "Associe os campos" removidos; passos Arquivo → Prévia → Confirmação; persistência em IndexedDB (autorizada) com "Limpar dados importados"; nova rota `app/employees` com 2 abas (busca, ordenação, filtros, paginação de 50, exportar CSV, somas). `lib/import-data.ts` e as regras antigas (CPF, cargo/quantidade/ano/mês) foram removidos; `tsconfig` com `allowImportingTsExtensions` (autorizado).
 Validação: lint OK, typecheck OK, 43/45 testes (2 skip = amostras reais ausentes em `amostras/`), build com BASE_PATH OK, prévia gerada.
 Pendências: validar com `amostras/GERAL_ECIDADE.csv` (esperado 3.421) e `amostras/CADASTRO_FUNCIONAL.xlsm` (medir tempo de leitura com a aba DADOS); teste manual no navegador (arrastar, persistência após recarregar).
+
+Redesign aprovado pelo usuário (H10, 2026-11-13): tela Importar com dois cartões (CSV e planilha, soltar os dois de uma vez, só resumo, nenhum dado de pessoa), botão único "Importar arquivos"; temas Claro/Escuro/Sistema (localStorage `cc-theme`, script inline anti-flash); Funcionários com 4 indicadores. Rodapé "TOTAL" do CSV reconhecido: o arquivo real tem 3.420 funcionários e o rodapé do e-Cidade declara 3419 (aviso). Testes 47/47 com as amostras reais (`ECIDADE_CSV`/`PLANILHA_XLSM`; a planilha real está em `Documents/CLEIDSON/[CONTINUAR]/`, em `amostras/` há só um atalho).
 
 ## Situação (histórico)
 

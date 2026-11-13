@@ -42,6 +42,7 @@ export function parseECidadeCsv(buffer: ArrayBuffer, fileName: string): ImportRe
 
   const warnings = new WarningCollector();
   const records: ServidorECidade[] = [];
+  let declaredTotal: number | null = null;
   for (let index = 1; index < table.length; index += 1) {
     const raw = table[index].map((cell) => String(cell ?? "").trim());
     if (raw.every((cell) => cell === "")) continue;
@@ -49,6 +50,12 @@ export function parseECidadeCsv(buffer: ArrayBuffer, fileName: string): ImportRe
     const pick = (columnIndex: number) => (positions[columnIndex] >= 0 ? (raw[positions[columnIndex]] ?? "") : "");
     const matricula = pick(0);
     const nome = pick(1);
+    // Rodapé do relatório: "TOTAL : 3420 FUNCIONÁRIOS" na 1ª coluna, demais vazias.
+    const footer = raw.filter((cell) => cell !== "").length === 1 ? /^total\s*:?\s*(\d+)/.exec(normalizeHeader(raw.find((cell) => cell !== "") ?? "")) : null;
+    if (footer) {
+      declaredTotal = Number(footer[1]);
+      continue;
+    }
     if (matricula === "" || nome === "") {
       warnings.add("linha-ignorada", "Linhas sem matrícula ou nome foram ignoradas.", fileRow);
       continue;
@@ -70,6 +77,9 @@ export function parseECidadeCsv(buffer: ArrayBuffer, fileName: string): ImportRe
   }
 
   if (records.length === 0) throw new ImportFileError("vazio", "Não encontramos registros neste arquivo.");
+  if (declaredTotal !== null && declaredTotal !== records.length) {
+    warnings.add("linha-ignorada", `O rodapé do relatório informa ${declaredTotal} funcionários, mas ${records.length} foram importados.`, table.length + headerIndex);
+  }
   return {
     kind: "ecidade",
     fileName,

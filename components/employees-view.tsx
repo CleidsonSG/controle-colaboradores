@@ -167,6 +167,54 @@ type LoadState =
   | { status: "error" }
   | { status: "ready"; ecidade: StoredDataset<ServidorECidade> | null; planilha: StoredDataset<ColaboradorPlanilha> | null };
 
+function KpiStrip({ state }: { state: LoadState }) {
+  if (state.status === "loading") {
+    return (
+      <dl className="kpi-strip" aria-busy="true" aria-label="Indicadores">
+        {["a", "b", "c", "d"].map((key) => (
+          <div className="kpi kpi-skeleton" key={key}><dt>Carregando…</dt><dd aria-hidden="true" /></div>
+        ))}
+      </dl>
+    );
+  }
+  if (state.status === "error") return null;
+  const { ecidade, planilha } = state;
+  const servidores = ecidade?.records ?? [];
+  const comissionadosEcidade = servidores.filter((row) => row.comissionado).length;
+  const registros = planilha?.records ?? [];
+  const comissionadosPlanilha = registros.filter((row) => row.origem === "Comissionado").length;
+  const terceirizados = registros.filter((row) => row.origem === "Terceirizado").length;
+  const remuneracao = registros.reduce((sum, row) => sum + (row.remuneracao ?? 0), 0);
+  const dash = "—";
+  return (
+    <dl className="kpi-strip" aria-label="Indicadores dos dados importados">
+      <div className="kpi">
+        <dt>Servidores e-Cidade</dt>
+        <dd>{ecidade ? formatInt(servidores.length) : dash}</dd>
+      </div>
+      <div className="kpi">
+        <dt>Comissionados (282/16)</dt>
+        <dd>{ecidade ? formatInt(comissionadosEcidade) : dash}</dd>
+      </div>
+      <div className="kpi">
+        <dt>Registros da planilha</dt>
+        <dd>
+          {planilha ? formatInt(registros.length) : dash}
+          {planilha && <span className="kpi-note">{formatInt(comissionadosPlanilha)} comissionados · {formatInt(terceirizados)} terceirizados</span>}
+        </dd>
+      </div>
+      <div className="kpi">
+        <dt>Soma de remuneração</dt>
+        <dd>{planilha ? formatMoney(remuneracao) : dash}</dd>
+      </div>
+    </dl>
+  );
+}
+
+function formatInt(value: number): string {
+  return value.toLocaleString("pt-BR");
+}
+
 export default function EmployeesView() {
   const [tab, setTab] = useState<TabKey>("ecidade");
   const [state, setState] = useState<LoadState>({ status: "loading" });
@@ -217,11 +265,15 @@ export default function EmployeesView() {
 
   return (
     <div className="employees-page">
-      <header className="employees-heading">
-        <p className="eyebrow">Gestão de pessoas</p>
-        <h1>Funcionários</h1>
-        <p className="intro-description">Consulte os dados importados. Tudo fica apenas neste navegador.</p>
+      <header className="page-header">
+        <div className="page-header-copy">
+          <p className="eyebrow">Gestão de pessoas</p>
+          <h1>Funcionários</h1>
+          <p className="intro-description">Consulte os dados importados. Tudo fica apenas neste navegador.</p>
+        </div>
       </header>
+
+      <KpiStrip state={state} />
 
       <div className="tab-list" role="tablist" aria-label="Fontes de dados">
         {TABS.map((item) => (

@@ -55,3 +55,17 @@ test("arquivo sem bytes ou sem registros: vazio", () => {
   assert.throws(() => parseECidadeCsv(new ArrayBuffer(0), "a.csv"), (e) => e.code === "vazio");
   assert.throws(() => parseECidadeCsv(fx.csvOnlyHeader(), "a.csv"), (e) => e.code === "vazio");
 });
+
+const withFooter = (total) =>
+  fx.toArrayBuffer(Buffer.concat([Buffer.from(fx.csvWindows1252()), Buffer.from(`TOTAL :  ${total}  FUNCIONÁRIOS;;;;;;;\r\n`, "latin1")]));
+
+test("rodapé TOTAL do relatório é descartado sem aviso quando confere", () => {
+  const r = parseECidadeCsv(withFooter(5), "a.csv");
+  assert.equal(r.records.length, 5);
+  assert.ok(!r.warnings.some((w) => w.code === "linha-ignorada"));
+});
+test("rodapé TOTAL divergente gera aviso", () => {
+  const r = parseECidadeCsv(withFooter(9), "a.csv");
+  assert.equal(r.records.length, 5);
+  assert.ok(r.warnings.some((w) => w.code === "linha-ignorada" && w.message.includes("9")));
+});

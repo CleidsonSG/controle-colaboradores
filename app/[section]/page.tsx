@@ -32,7 +32,7 @@ export default async function PreparedSectionPage({ params }: SectionPageProps) 
 
   return (
     <section className="prepared-page" aria-labelledby="prepared-title">
-      <p className="eyebrow">Próxima etapa do MVP</p>
+      <p className="eyebrow">Em preparação</p>
       <h1 id="prepared-title">{title}</h1>
       <div className="prepared-rule" aria-hidden="true" />
       <p className="prepared-copy">Esta área está em preparação. Nenhum dado ou indicador é exibido nesta versão.</p>
