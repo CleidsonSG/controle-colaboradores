@@ -1,10 +1,10 @@
 # Estado do projeto — Controle de Colaboradores
 
-**Atualizado em:** 2026-11-12  
+**Atualizado em:** 2026-11-13  
 **Pasta:** `Controle_Colaboradores`  
 **Plano:** [controle-colaboradores.md](./controle-colaboradores.md)
 
-## Importação v2 + redesign (2026-11-13, commit local, aguardando autorização de publicação)
+## Importação v2 + redesign — **publicado em 2026-11-13** (`d6e7932`, deployment success, smoke HTTP 200)
 
 Diretriz e decisões do usuário: [docs/DIRETRIZ-IMPORTACAO-V2.md](docs/DIRETRIZ-IMPORTACAO-V2.md). CSV e-Cidade (windows-1252, cabeçalho na linha 5) e planilha XLSX/XLSM (só as 2 primeiras abas, fusão com Origem); "Tipo de carga" e "Associe os campos" removidos; passos Arquivo → Prévia → Confirmação; persistência em IndexedDB (autorizada) com "Limpar dados importados"; nova rota `app/employees` com 2 abas (busca, ordenação, filtros, paginação de 50, exportar CSV, somas). `lib/import-data.ts` e as regras antigas (CPF, cargo/quantidade/ano/mês) foram removidos; `tsconfig` com `allowImportingTsExtensions` (autorizado).
 Validação: lint OK, typecheck OK, 43/45 testes (2 skip = amostras reais ausentes em `amostras/`), build com BASE_PATH OK, prévia gerada.
