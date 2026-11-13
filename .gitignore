@@ -22,3 +22,9 @@ ACESSO*.txt
 *senha*
 *SENHA*
 *credenciais*
+
+.preview/
+
+# baseline de seguranca (publish_github.py)
+.astro/
+.svelte-kit/

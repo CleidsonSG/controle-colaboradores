@@ -35,7 +35,7 @@ async function makeWorkbookFile(name) {
 
 test("lê CSV UTF-8 com BOM e preserva valores textuais", async () => {
   const file = makeFile(
-    "\uFEFFMatrícula;Nome;CPF;Cargo;Lotação;Ano;Mês\n001;Ana;00123456789;Analista;Financeiro;2025;02",
+    "\uFEFFMatrícula;Nome;CPF;Cargo;Lotação;Ano;Mês\n001;Ana;00123456797;Analista;Financeiro;2025;02",
     "funcionarios.csv",
   );
   const parsed = await parseLocalFile(file);
@@ -45,7 +45,8 @@ test("lê CSV UTF-8 com BOM e preserva valores textuais", async () => {
   assert.equal(parsed.rows.length, 1);
   assert.equal(parsed.rows[0].values[0], "001");
   assert.equal(analysis.validCount, 1);
-  assert.equal(analysis.rows[0].values.cpf, "00123456789");
+  assert.equal(analysis.rows[0].values.cpf, "00123456797");
+  assert.equal(analysis.rows[0].normalized.cpf, "001.234.567-97");
 });
 
 for (const extension of ["xlsx", "xlsm"]) {

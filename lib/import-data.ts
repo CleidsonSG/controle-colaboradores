@@ -9,6 +9,7 @@ export type ImportField = {
   required: boolean;
   sensitive?: boolean;
   numeric?: "year" | "month" | "quantity";
+  format?: "cpf";
   aliases: string[];
 };
 
@@ -16,7 +17,7 @@ export const IMPORT_FIELDS: Record<LoadType, ImportField[]> = {
   employees: [
     { key: "registration", label: "Matrícula", required: true, aliases: ["matricula", "registro", "id funcional"] },
     { key: "name", label: "Nome", required: true, aliases: ["nome", "nome completo", "servidor"] },
-    { key: "cpf", label: "CPF", required: false, sensitive: true, aliases: ["cpf"] },
+    { key: "cpf", label: "CPF", required: false, sensitive: true, format: "cpf", aliases: ["cpf"] },
     { key: "position", label: "Cargo", required: true, aliases: ["cargo", "funcao", "função"] },
     { key: "unit", label: "Lotação", required: true, aliases: ["lotacao", "lotação", "unidade"] },
     { key: "phone", label: "Telefone", required: false, sensitive: true, aliases: ["telefone", "tel", "fone"] },
@@ -47,11 +48,16 @@ export type ParsedFile = {
 
 export type RowResult = {
   record: number;
+  /** Trimmed text exactly as read from the source file. */
   values: Record<string, string>;
+  /** Normalized value when the field is valid (CPF formatted, integers without padding); source text otherwise. */
+  normalized: Record<string, string>;
   issues: string[];
 };
 
 export type ImportAnalysis = {
+  /** Fields of the analyzed load type, in display/export order. */
+  fields: ImportField[];
   validCount: number;
   invalidCount: number;
   rows: RowResult[];
@@ -238,14 +244,135 @@ function parseInteger(value: string): number | undefined {
   return Number.isSafeInteger(number) ? number : undefined;
 }
 
-export function analyzeRows(
+const CPF_LENGTH = 11;
+const CPF_SEPARATORS = /[.\-/\s ]/g;
+const YEAR_RANGE = { min: 1900, max: 2100 };
+const MONTH_RANGE = { min: 1, max: 12 };
+const MAX_LISTED_DUPLICATES = 5;
+
+function cpfCheckDigit(digits: string, length: number): number {
+  let sum = 0;
+  for (let index = 0; index < length; index += 1) {
+    sum += Number(digits[index]) * (length + 1 - index);
+  }
+  const remainder = (sum * 10) % 11;
+  return remainder === 10 ? 0 : remainder;
+}
+
+/** Checks an 11-digit CPF (no punctuation): rejects repeated digits and wrong check digits. */
+export function isValidCpf(digits: string): boolean {
+  if (!/^\d{11}$/.test(digits) || /^(\d)\1{10}$/.test(digits)) return false;
+  return cpfCheckDigit(digits, 9) === Number(digits[9]) && cpfCheckDigit(digits, 10) === Number(digits[10]);
+}
+
+export function formatCpf(digits: string): string {
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+}
+
+/**
+ * Returns the CPF formatted as 000.000.000-00, or undefined when invalid.
+ * Bare numbers shorter than 11 digits are left-padded with zeros (Excel drops leading zeros).
+ */
+export function normalizeCpf(value: string): string | undefined {
+  const trimmed = value.trim();
+  const digits = trimmed.replace(CPF_SEPARATORS, "");
+  if (!/^\d+$/.test(digits)) return undefined;
+  const candidate = /^\d+$/.test(trimmed) ? digits.padStart(CPF_LENGTH, "0") : digits;
+  return isValidCpf(candidate) ? formatCpf(candidate) : undefined;
+}
+
+type FieldCheck = {
+  normalized: string;
+  issue?: string;
+  numericValue?: number;
+};
+
+function checkNumericField(field: ImportField, value: string): FieldCheck {
+  const numericValue = parseInteger(value);
+  const invalid = (issue: string): FieldCheck => ({ normalized: value, issue });
+  if (numericValue === undefined) return invalid(`${field.label}: informe um número inteiro`);
+  if (field.numeric === "year" && (numericValue < YEAR_RANGE.min || numericValue > YEAR_RANGE.max)) {
+    return invalid(`${field.label}: informe um ano entre ${YEAR_RANGE.min} e ${YEAR_RANGE.max}`);
+  }
+  if (field.numeric === "month" && (numericValue < MONTH_RANGE.min || numericValue > MONTH_RANGE.max)) {
+    return invalid(`${field.label}: informe um mês entre ${MONTH_RANGE.min} e ${MONTH_RANGE.max}`);
+  }
+  if (field.numeric === "quantity" && numericValue < 0) {
+    return invalid(`${field.label}: informe uma quantidade igual ou maior que zero`);
+  }
+  return { normalized: String(numericValue), numericValue };
+}
+
+function checkField(field: ImportField, value: string): FieldCheck {
+  if (!value) {
+    return field.required ? { normalized: value, issue: `${field.label}: campo obrigatório vazio` } : { normalized: value };
+  }
+  if (field.format === "cpf") {
+    const cpf = normalizeCpf(value);
+    return cpf ? { normalized: cpf } : { normalized: value, issue: `${field.label}: número inválido` };
+  }
+  return field.numeric ? checkNumericField(field, value) : { normalized: value };
+}
+
+type AnalyzedRow = {
+  result: RowResult;
+  numericValues: Map<string, number>;
+};
+
+function analyzeRow(sourceRow: SourceRow, fields: ImportField[], columnIndexByField: Map<string, number>): AnalyzedRow {
+  const result: RowResult = { record: sourceRow.record, values: {}, normalized: {}, issues: [] };
+  const numericValues = new Map<string, number>();
+  for (const field of fields) {
+    const columnIndex = columnIndexByField.get(field.key);
+    const value = columnIndex === undefined ? "" : (sourceRow.values[columnIndex] ?? "").trim();
+    const check = checkField(field, value);
+    result.values[field.key] = value;
+    result.normalized[field.key] = check.normalized;
+    if (check.issue) result.issues.push(check.issue);
+    if (check.numericValue !== undefined) numericValues.set(field.key, check.numericValue);
+  }
+  return { result, numericValues };
+}
+
+function registrationPeriodKey({ result, numericValues }: AnalyzedRow): string | undefined {
+  const registration = result.values.registration?.toLowerCase();
+  const year = numericValues.get("year");
+  const month = numericValues.get("month");
+  if (!registration || year === undefined || month === undefined) return undefined;
+  return JSON.stringify([registration, year, month]);
+}
+
+function describeOtherRecords(records: number[]): string {
+  const listed = records.slice(0, MAX_LISTED_DUPLICATES).join(", ");
+  const remaining = records.length - MAX_LISTED_DUPLICATES;
+  return remaining > 0 ? `${listed} e mais ${remaining}` : listed;
+}
+
+/** Same registration (case-insensitive) in the same year and month is an error in every occurrence. */
+function flagDuplicateRegistrations(rows: AnalyzedRow[]): void {
+  const groups = new Map<string, RowResult[]>();
+  for (const row of rows) {
+    const key = registrationPeriodKey(row);
+    if (key === undefined) continue;
+    const group = groups.get(key) ?? [];
+    group.push(row.result);
+    groups.set(key, group);
+  }
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    for (const result of group) {
+      const others = group.filter((other) => other !== result).map((other) => other.record);
+      result.issues.push(`Matrícula: duplicada no mesmo mês/ano (registros ${describeOtherRecords(others)})`);
+    }
+  }
+}
+
+function resolveMapping(
   source: ParsedFile,
-  type: LoadType,
+  fields: ImportField[],
   mapping: Record<string, string>,
-): ImportAnalysis {
-  const fields = IMPORT_FIELDS[type];
+): { columnIndexByField: Map<string, number>; configurationIssues: string[] } {
   const configurationIssues: string[] = [];
-  const selectedColumns: number[] = [];
   const columnIndexByField = new Map<string, number>();
 
   for (const field of fields) {
@@ -260,50 +387,37 @@ export function analyzeRows(
       configurationIssues.push(`Selecione uma coluna válida para ${field.label}.`);
       continue;
     }
-
-    selectedColumns.push(columnIndex);
     columnIndexByField.set(field.key, columnIndex);
   }
+
+  const selectedColumns = [...columnIndexByField.values()];
   if (new Set(selectedColumns).size !== selectedColumns.length) {
     configurationIssues.push("Cada campo deve usar uma coluna diferente do arquivo.");
   }
+  return { columnIndexByField, configurationIssues };
+}
+
+export function analyzeRows(
+  source: ParsedFile,
+  type: LoadType,
+  mapping: Record<string, string>,
+): ImportAnalysis {
+  const fields = IMPORT_FIELDS[type];
+  const { columnIndexByField, configurationIssues } = resolveMapping(source, fields, mapping);
   if (configurationIssues.length > 0) {
-    return { validCount: 0, invalidCount: 0, rows: [], configurationIssues };
+    return { fields, validCount: 0, invalidCount: 0, rows: [], configurationIssues };
   }
 
-  const results: RowResult[] = source.rows.map((sourceRow) => {
-    const values: Record<string, string> = {};
-    const issues: string[] = [];
-    for (const field of fields) {
-      const columnIndex = columnIndexByField.get(field.key);
-      const value = columnIndex === undefined ? "" : (sourceRow.values[columnIndex] ?? "").trim();
-      values[field.key] = value;
+  const analyzedRows = source.rows.map((sourceRow) => analyzeRow(sourceRow, fields, columnIndexByField));
+  if (type === "employees") flagDuplicateRegistrations(analyzedRows);
 
-      if (field.required && !value) {
-        issues.push(`${field.label}: campo obrigatório vazio`);
-        continue;
-      }
-      if (!value || !field.numeric) continue;
-
-      const numericValue = parseInteger(value);
-      if (numericValue === undefined) {
-        issues.push(`${field.label}: informe um número inteiro`);
-      } else if (field.numeric === "year" && (numericValue < 1900 || numericValue > 2100)) {
-        issues.push(`${field.label}: informe um ano entre 1900 e 2100`);
-      } else if (field.numeric === "month" && (numericValue < 1 || numericValue > 12)) {
-        issues.push(`${field.label}: informe um mês entre 1 e 12`);
-      } else if (field.numeric === "quantity" && numericValue < 0) {
-        issues.push(`${field.label}: informe uma quantidade igual ou maior que zero`);
-      }
-    }
-    return { record: sourceRow.record, values, issues };
-  });
-
-  const invalidCount = results.filter((row) => row.issues.length > 0).length;
+  const rows = analyzedRows.map(({ result }) => result);
+  const invalidCount = rows.filter((row) => row.issues.length > 0).length;
   return {
-    validCount: results.length - invalidCount,
+    fields,
+    validCount: rows.length - invalidCount,
     invalidCount,
-    rows: results,
+    rows,
     configurationIssues: [],
   };
 }

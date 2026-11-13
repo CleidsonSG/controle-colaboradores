@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 
 const navigation = [
   { label: "Dashboard", href: "/dashboard", icon: "dashboard" },
@@ -34,16 +35,48 @@ function NavIcon({ name }: { name: string }) {
   );
 }
 
+const MOBILE_QUERY = "(max-width: 680px)";
+
+function subscribeToMobileQuery(onChange: () => void) {
+  const query = window.matchMedia(MOBILE_QUERY);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
+function useIsMobile(): boolean {
+  return useSyncExternalStore(
+    subscribeToMobileQuery,
+    () => window.matchMedia(MOBILE_QUERY).matches,
+    () => false,
+  );
+}
+
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const current = pathname.replace(/\/+$/, "") || "/";
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
+  const sidebar = useRef<HTMLDivElement>(null);
+  const isMobile = useIsMobile();
+  const isMobileMenuOpen = menuOpen && isMobile;
+
+  useEffect(() => {
+    if (isMobileMenuOpen) sidebar.current?.querySelector<HTMLAnchorElement>("a")?.focus();
+  }, [isMobileMenuOpen]);
+
+  function closeMenu() {
+    setMenuOpen(false);
+    menuButton.current?.focus();
+  }
 
   function onShellKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.key === "Escape" && menuOpen) {
-      setMenuOpen(false);
-      menuButton.current?.focus();
-    }
+    if (event.key === "Escape" && menuOpen) closeMenu();
+  }
+
+  function onNavigate() {
+    if (!menuOpen) return;
+    flushSync(() => setMenuOpen(false));
+    document.getElementById("main-content")?.focus();
   }
 
   return (
@@ -60,23 +93,23 @@ export default function AppShell({ children }: { children: ReactNode }) {
       >
         <span aria-hidden="true">{menuOpen ? "×" : "☰"}</span>
       </button>
-      {menuOpen && <button className="nav-scrim" type="button" aria-label="Fechar navegação" tabIndex={-1} onClick={() => { setMenuOpen(false); menuButton.current?.focus(); }} />}
-      <aside className={`sidebar${menuOpen ? " sidebar-open" : ""}`}>
-        <Link className="brand" href="/" onClick={() => setMenuOpen(false)}>
+      {menuOpen && <button className="nav-scrim" type="button" aria-label="Fechar navegação" tabIndex={-1} onClick={closeMenu} />}
+      <div ref={sidebar} id="primary-navigation" className={`sidebar${menuOpen ? " sidebar-open" : ""}`}>
+        <Link className="brand" href="/" onClick={onNavigate}>
           <span className="brand-mark" aria-hidden="true"><span /></span>
           <span className="brand-name">Controle<span>Colaboradores</span></span>
         </Link>
-        <div className="nav-caption">ÁREA DE GESTÃO</div>
-        <nav id="primary-navigation" className="primary-navigation" aria-label="Navegação principal">
+        <div className="nav-caption">Área de gestão</div>
+        <nav className="primary-navigation" aria-label="Navegação principal">
           {navigation.map((item) => {
-            const active = item.href === "/" ? pathname === "/" : pathname === item.href;
+            const active = current === item.href;
             return (
               <Link
                 className={`nav-link${active ? " nav-link-active" : ""}`}
                 href={item.href}
                 key={item.href}
                 aria-current={active ? "page" : undefined}
-                onClick={() => setMenuOpen(false)}
+                onClick={onNavigate}
               >
                 <NavIcon name={item.icon} />
                 <span>{item.label}</span>
@@ -88,10 +121,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
           <span className="status-dot" aria-hidden="true" />
           <span>Prévia local · sem backend</span>
         </div>
-      </aside>
-      <div className="page-column">
+      </div>
+      <div className="page-column" inert={isMobileMenuOpen}>
         <header className="topbar">
-          <p>GESTÃO DE PESSOAS <span aria-hidden="true">/</span> AMBIENTE DE PRÉVIA</p>
+          <p>Gestão de pessoas <span aria-hidden="true">/</span> Ambiente de prévia</p>
           <span className="topbar-badge"><span aria-hidden="true" /> MVP local</span>
         </header>
         <main className="main-content" id="main-content" tabIndex={-1}>{children}</main>

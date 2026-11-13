@@ -4,7 +4,10 @@ import AppShell from "@/components/app-shell";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Controle Colaboradores",
+  title: {
+    default: "Importar dados · Controle Colaboradores",
+    template: "%s · Controle Colaboradores",
+  },
   description: "Prévia local de importação para gestão de colaboradores.",
 };
 
