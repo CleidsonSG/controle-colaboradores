@@ -21,12 +21,12 @@ Protótipo local em Next.js App Router, React e TypeScript. A navegação dos oi
 
 - 2026-11-12: o projeto ficou compatível com export estático (`output: 'export'`, `basePath` via `BASE_PATH`, `trailingSlash`, `generateStaticParams` + `dynamicParams = false` em `app/[section]`). Validação: lint OK, typecheck OK, 8/8 testes, build com `BASE_PATH=/controle-colaboradores` gerando as 8 páginas com assets no subcaminho.
 - **Publicado em 2026-11-12** (autorizado pelo usuário): commit `e369a43` em https://github.com/CleidsonSG/controle-colaboradores; workflow "Deploy GitHub Pages" concluído com sucesso; site em https://cleidsonsg.github.io/controle-colaboradores/. O smoke HTTP não é verificável desta máquina, que bloqueia `*.github.io`.
-- **Alterações locais NÃO publicadas (aguardam revisão do usuário pela prévia):**
+- **Publicado em 2026-11-13** (autorizado pelo usuário após a prévia): commit `a4a4187`; deployment `success`; smoke HTTP 200 na home, em `/dashboard/` e em um asset. Conteúdo desta entrega:
   - Acessibilidade WCAG 2.2 AA conforme [docs/acessibilidade-auditoria.md](docs/acessibilidade-auditoria.md): C1, C2, A1–A6, M1–M8, B1, B3–B9 aplicados; B2 não aplicado.
   - Regras de negócio aprovadas em 2026-11-12: CPF opcional, mas validado (DV, zeros à esquerda); matrícula duplicada no mesmo mês/ano é erro; mês só numérico; `lib/export-data.ts` (exportação XLSX/CSV de válidos e erros).
   - Testes: 89/89 (`tests/import-rules.test.mjs`, `tests/export-data.test.mjs`, `tests/helpers.mjs`); script de teste com glob.
   - Validação: lint, typecheck, 89/89 testes e build (com e sem BASE_PATH) verdes; prévia gerada em `.preview/`.
-- Para publicar após autorização: `python ../.agent/scripts/publish_github.py . -m "<msg>" --wait`
+- Próxima entrega: nova prévia, validação verde e pergunta H9; depois `python ../.agent/scripts/publish_github.py . -m "<msg>" --wait`.
 
 ## Limites e pendências
 
