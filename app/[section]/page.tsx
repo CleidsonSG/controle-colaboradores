@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 
 const sections: Record<string, string> = {
   dashboard: "Dashboard",
-  employees: "Funcionários",
   budget: "Orçamento",
   statistics: "Estatísticas de Cargo",
   positions: "Manutenção de Cargos",

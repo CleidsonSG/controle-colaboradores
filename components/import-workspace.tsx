@@ -1,434 +1,372 @@
 "use client";
 
-import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "react";
-import {
-  analyzeRows,
-  IMPORT_FIELDS,
-  ImportFileError,
-  parseLocalFile,
-  suggestMapping,
-  type ImportAnalysis,
-  type ImportField,
-  type LoadType,
-  type ParsedFile,
-} from "@/lib/import-data";
+import { useEffect, useRef, useState, type ChangeEvent, type DragEvent, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import { formatCell, type Column } from "@/components/data-table";
+import { ECIDADE_COLUMNS, PLANILHA_COLUMNS } from "@/components/employees-view";
+import { detectKind, importFile, ImportFileError } from "@/lib/import";
+import type { ColaboradorPlanilha, ImportKind, ImportResult, ServidorECidade, StoredDataset } from "@/lib/import";
+import { getDataStore } from "@/lib/storage";
 
-const PREVIEW_LIMIT = 6;
+const PREVIEW_LIMIT = 20;
+const WORKFLOW_STEPS = ["Arquivo", "Prévia", "Confirmação"] as const;
+const KIND_LABEL: Record<ImportKind, string> = {
+  ecidade: "Servidores Comissionados (e-Cidade)",
+  planilha: "Terceirizados e Comissionados (Planilha)",
+};
+const WARNING_LABEL: Record<string, string> = {
+  "linha-ignorada": "Linhas ignoradas",
+  "data-invalida": "Datas inválidas",
+  duplicidade: "Duplicidades",
+  "valor-invalido": "Valores inválidos",
+  "formula-sem-valor": "Fórmulas sem valor calculado",
+};
 
-const WORKFLOW_STEPS = ["Tipo e arquivo", "Mapeamento", "Prévia"] as const;
-
-function formatBytes(bytes: number): string {
-  return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
+type AnyResult = ImportResult<ServidorECidade> | ImportResult<ColaboradorPlanilha>;
 
 function formatCount(value: number): string {
   return value.toLocaleString("pt-BR");
 }
 
-function getSafeError(error: unknown): string {
-  if (error instanceof ImportFileError) return error.message;
-  return "Não foi possível preparar este arquivo. Confira o formato e tente novamente.";
+function getErrorMessage(error: unknown): string {
+  if (error instanceof ImportFileError) {
+    if (error.code === "vazio") return "O arquivo está vazio ou não contém registros para importar.";
+    if (error.code === "cabecalho") {
+      const missing = error.missingColumns?.length ? ` Colunas não encontradas: ${error.missingColumns.join(", ")}.` : "";
+      return `Não encontramos o cabeçalho esperado neste arquivo.${missing}`;
+    }
+    return error.message;
+  }
+  return "Não foi possível ler este arquivo. Confira o formato e tente novamente.";
 }
 
-/** Mirrors the configuration checks of analyzeRows so each mapping select can expose its own error. */
-function getMappingErrors(fields: ImportField[], mapping: Record<string, string>, columnCount: number): Record<string, string> {
-  const errors: Record<string, string> = {};
-  const fieldsByColumn = new Map<string, string[]>();
+function ConfirmDialog({
+  open,
+  title,
+  confirmLabel,
+  busy,
+  onConfirm,
+  onCancel,
+  children,
+}: {
+  open: boolean;
+  title: string;
+  confirmLabel: string;
+  busy?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
 
-  for (const field of fields) {
-    const selected = mapping[field.key]?.trim() ?? "";
-    if (!selected) {
-      if (field.required) errors[field.key] = `Selecione uma coluna para ${field.label}.`;
-      continue;
-    }
-    const columnIndex = Number(selected);
-    if (!Number.isInteger(columnIndex) || columnIndex < 0 || columnIndex >= columnCount) {
-      errors[field.key] = `Selecione uma coluna válida para ${field.label}.`;
-      continue;
-    }
-    fieldsByColumn.set(selected, [...(fieldsByColumn.get(selected) ?? []), field.key]);
-  }
+  useEffect(() => {
+    const dialog = ref.current;
+    if (!dialog) return;
+    if (open && !dialog.open) dialog.showModal();
+    if (!open && dialog.open) dialog.close();
+  }, [open]);
 
-  for (const keys of fieldsByColumn.values()) {
-    if (keys.length < 2) continue;
-    for (const key of keys) errors[key] = "Cada campo deve usar uma coluna diferente do arquivo.";
-  }
-  return errors;
+  return (
+    <dialog ref={ref} className="confirm-dialog" aria-labelledby="confirm-title" onCancel={(event) => { event.preventDefault(); if (!busy) onCancel(); }}>
+      <h2 id="confirm-title">{title}</h2>
+      <div className="confirm-body">{children}</div>
+      <div className="confirm-actions">
+        <button className="button button-outline" type="button" onClick={onCancel} disabled={busy} autoFocus>Cancelar</button>
+        <button className="button button-primary" type="button" onClick={onConfirm} disabled={busy}>
+          {busy && <span className="spinner spinner-light" aria-hidden="true" />}
+          {confirmLabel}
+        </button>
+      </div>
+    </dialog>
+  );
 }
 
-function focusIfLost(target: HTMLElement | null) {
-  if (document.activeElement === document.body || document.activeElement === null) target?.focus();
+function PreviewTable<T>({ columns, rows }: { columns: Column<T>[]; rows: T[] }) {
+  return (
+    <div className="table-scroll" tabIndex={0} role="region" aria-label="Prévia das primeiras linhas">
+      <table className="data-grid">
+        <thead>
+          <tr>
+            {columns.map((column) => (
+              <th key={column.key} scope="col" className={column.kind === "money" ? "cell-number" : undefined}>{column.header}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={index}>
+              {columns.map((column) => {
+                const text = formatCell(column.kind, column.value(row));
+                return (
+                  <td key={column.key} className={column.kind === "money" ? "cell-number" : undefined}>
+                    {column.render ? column.render(row) : text || <span className="empty-cell">—</span>}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 export default function ImportWorkspace() {
-  const fileInput = useRef<HTMLInputElement>(null);
-  const loadTypeSelect = useRef<HTMLSelectElement>(null);
-  const sheetSelect = useRef<HTMLSelectElement>(null);
-  const configurationAlert = useRef<HTMLDivElement>(null);
-  const shouldFocusInvalidField = useRef(false);
-  const parseSequence = useRef(0);
-  const [file, setFile] = useState<File | null>(null);
-  const [source, setSource] = useState<ParsedFile | null>(null);
-  const [loadType, setLoadType] = useState<LoadType | "">("");
-  const [mapping, setMapping] = useState<Record<string, string>>({});
-  const [analysis, setAnalysis] = useState<ImportAnalysis | null>(null);
-  const [error, setError] = useState("");
-  const [reading, setReading] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
+  const router = useRouter();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const summaryRef = useRef<HTMLHeadingElement>(null);
   const [dragging, setDragging] = useState(false);
-  const [showSensitive, setShowSensitive] = useState(false);
-  const [announcement, setAnnouncement] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<AnyResult | null>(null);
+  const [replaceOpen, setReplaceOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [clearOpen, setClearOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [notice, setNotice] = useState("");
 
-  const fields = loadType ? IMPORT_FIELDS[loadType] : [];
-  const busy = reading || analyzing;
+  const step = replaceOpen || saving ? 3 : result ? 2 : 1;
 
   useEffect(() => {
-    if (!shouldFocusInvalidField.current || !analysis) return;
-    shouldFocusInvalidField.current = false;
-    const firstInvalid = document.querySelector<HTMLSelectElement>('.mapping-grid select[aria-invalid="true"]');
-    (firstInvalid ?? configurationAlert.current)?.focus();
-  }, [analysis]);
+    if (result) summaryRef.current?.focus();
+  }, [result]);
 
-  async function loadSelectedFile(nextFile: File, sheetName?: string) {
-    const request = ++parseSequence.current;
-    const isSheetChange = sheetName !== undefined;
+  async function handleFile(file: File | undefined) {
+    if (!file) return;
     setError("");
-    setAnalysis(null);
-    if (!isSheetChange) setSource(null);
-    setFile(nextFile);
-    setMapping({});
-    setReading(true);
-    setAnnouncement("Lendo arquivo neste navegador…");
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+    setNotice("");
+    setResult(null);
+    if (!detectKind(file.name)) {
+      setError(getErrorMessage(new ImportFileError("formato", "Formato não suportado. Envie um arquivo CSV, XLSX ou XLSM de até 25 MB.")));
+      return;
+    }
+    setLoading(true);
     try {
-      const parsed = await parseLocalFile(nextFile, sheetName);
-      if (request !== parseSequence.current) return;
-      setFile(nextFile);
-      setSource(parsed);
-      setMapping(loadType ? suggestMapping(parsed.headers, loadType) : {});
-      setShowSensitive(false);
-      setAnnouncement(`Leitura concluída: ${parsed.headers.length} colunas, ${formatCount(parsed.rows.length)} registros.`);
+      setResult(await importFile(file));
     } catch (caught) {
-      if (request !== parseSequence.current) return;
-      setSource(null);
-      setFile(null);
-      setMapping({});
-      setAnnouncement("");
-      setError(getSafeError(caught));
+      setError(getErrorMessage(caught));
     } finally {
-      if (request === parseSequence.current) {
-        setReading(false);
-        if (isSheetChange) window.setTimeout(() => focusIfLost(sheetSelect.current ?? fileInput.current), 0);
-      }
+      setLoading(false);
     }
   }
 
-  function onFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const selected = event.currentTarget.files?.[0];
-    if (selected) void loadSelectedFile(selected);
-    event.currentTarget.value = "";
+  function onInputChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    void handleFile(file);
   }
 
   function onDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
     setDragging(false);
-    const selected = event.dataTransfer.files[0];
-    if (selected) void loadSelectedFile(selected);
+    if (loading) return;
+    void handleFile(event.dataTransfer.files?.[0]);
   }
 
-  async function onSheetChange(event: ChangeEvent<HTMLSelectElement>) {
-    if (file) await loadSelectedFile(file, event.currentTarget.value);
-  }
-
-  function onLoadTypeChange(event: ChangeEvent<HTMLSelectElement>) {
-    const selected = event.currentTarget.value as LoadType | "";
-    setLoadType(selected);
-    setAnalysis(null);
-    setMapping(source && selected ? suggestMapping(source.headers, selected) : {});
-  }
-
-  function onMappingChange(fieldKey: string, column: string) {
-    if (busy) return;
-    setMapping((current) => ({ ...current, [fieldKey]: column }));
-    setAnalysis(null);
-  }
-
-  async function runAnalysis() {
-    if (busy || !source || !loadType) return;
-    setAnalyzing(true);
-    setError("");
-    setAnnouncement("Analisando…");
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+  async function save(data: AnyResult) {
+    setSaving(true);
     try {
-      const result = analyzeRows(source, loadType, mapping);
-      shouldFocusInvalidField.current = result.configurationIssues.length > 0;
-      setAnalysis(result);
-      setAnnouncement(result.configurationIssues.length > 0
-        ? ""
-        : `Prévia pronta: ${formatCount(result.validCount)} válidos, ${formatCount(result.invalidCount)} com erros, ${formatCount(result.rows.length)} no total. Nenhum dado foi salvo.`);
+      const stored = { ...data, schemaVersion: 1 as const, importedAt: new Date().toISOString() };
+      await getDataStore().replace(data.kind, stored as StoredDataset<ServidorECidade> | StoredDataset<ColaboradorPlanilha>);
+      router.push(data.kind === "ecidade" ? "/employees/#ecidade" : "/employees/#planilha");
     } catch {
-      setAnnouncement("");
-      setError("Não foi possível concluir a análise local. Revise as colunas e tente novamente.");
-    } finally {
-      setAnalyzing(false);
+      setReplaceOpen(false);
+      setSaving(false);
+      setError("Não foi possível gravar os dados neste navegador. Verifique se o armazenamento local está liberado e tente novamente.");
     }
   }
 
-  function resetImport() {
-    if (busy) return;
-    loadTypeSelect.current?.focus();
-    setFile(null);
-    setSource(null);
-    setMapping({});
-    setAnalysis(null);
+  async function onConfirmImport() {
+    if (!result) return;
     setError("");
-    setAnnouncement("");
-    setShowSensitive(false);
-    if (fileInput.current) fileInput.current.value = "";
+    try {
+      const existing = result.kind === "ecidade" ? await getDataStore().load("ecidade") : await getDataStore().load("planilha");
+      if (existing) {
+        setReplaceOpen(true);
+        return;
+      }
+    } catch {
+      setError("Não foi possível acessar o armazenamento deste navegador.");
+      return;
+    }
+    await save(result);
   }
 
-  const analysisReady = analysis !== null && analysis.configurationIssues.length === 0;
-  const mappingErrors = source && analysis?.configurationIssues.length ? getMappingErrors(fields, mapping, source.headers.length) : {};
-  const hasSensitiveMapped = fields.some((field) => field.sensitive && Boolean(mapping[field.key]));
-  const visibleFields = fields.filter((field) => !field.sensitive || showSensitive);
-  const previewRows = analysis?.rows.filter((row) => row.issues.length === 0).slice(0, PREVIEW_LIMIT) ?? [];
-  const errorRows = analysis?.rows.filter((row) => row.issues.length > 0).slice(0, PREVIEW_LIMIT) ?? [];
-  const currentStep = analysisReady ? 3 : source && loadType ? 2 : 1;
-  const activeSteps = [true, Boolean(source), analysisReady];
+  async function onClear() {
+    setClearing(true);
+    try {
+      await getDataStore().clear();
+      setNotice("Os dados importados foram removidos deste navegador.");
+      setClearOpen(false);
+    } catch {
+      setClearOpen(false);
+      setError("Não foi possível limpar os dados deste navegador.");
+    } finally {
+      setClearing(false);
+    }
+  }
+
+  const totalRecords = result?.records.length ?? 0;
 
   return (
     <div className="import-page">
-      <div className="page-intro">
+      <header className="page-intro">
         <div className="page-intro-copy">
-          <p className="eyebrow"><span className="eyebrow-index">01</span> Importação assistida</p>
-          <h1>Importar<br /><span>Dados</span></h1>
-          <p className="intro-description">Traga uma planilha para uma conferência local. Revise o mapeamento e a prévia antes de qualquer próxima etapa.</p>
+          <p className="eyebrow"><span className="eyebrow-index">01</span> Importar Dados</p>
+          <h1>Importar <span>dados</span></h1>
+          <p className="intro-description">
+            Envie o CSV do e-Cidade ou a planilha Excel (XLSX/XLSM). O tipo é reconhecido pela extensão do arquivo.
+          </p>
         </div>
-        <aside className="privacy-note" aria-label="Privacidade do processamento">
+        <aside className="privacy-note" aria-label="Privacidade">
           <span className="privacy-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none"><path d="M12 3.5 19 6v5.6c0 4.1-2.8 7.1-7 9-4.2-1.9-7-4.9-7-9V6l7-2.5Z" /><path d="m9 12 2 2 4-4" /></svg>
+            <svg viewBox="0 0 24 24" fill="none"><path d="M12 3.5 5 6v5.5c0 4 2.7 7 7 9 4.3-2 7-5 7-9V6z" /><path d="m9 12 2 2 4-4" /></svg>
           </span>
           <div>
-            <strong>O arquivo fica aqui.</strong>
-            <p>Leitura somente neste navegador. Não enviamos nem armazenamos os dados.</p>
+            <strong>Privacidade</strong>
+            <p>Os dados ficam apenas neste navegador e não são enviados a nenhum servidor.</p>
           </div>
         </aside>
-      </div>
+      </header>
 
-      <div className="workflow-heading">
-        <div>
-          <span className="section-index">Etapa 01 — revisão</span>
-          <h2 id="workflow-title">Preparar prévia</h2>
-        </div>
-        <span className="workflow-meta">3 passos <span aria-hidden="true">·</span> nenhum dado será salvo</span>
-      </div>
-
-      <section className="workflow-panel" aria-labelledby="workflow-title">
+      <div className="workflow-panel">
         <ol className="workflow-steps" aria-label="Etapas da importação">
-          {WORKFLOW_STEPS.map((label, index) => {
-            const step = index + 1;
-            const status = step < currentStep ? "concluída" : step === currentStep ? "etapa atual" : "pendente";
-            return (
-              <li
-                key={label}
-                className={`workflow-step${activeSteps[index] ? " workflow-step-active" : ""}`}
-                aria-current={step === currentStep ? "step" : undefined}
-              >
-                <span>{step}</span> {label}<span className="visually-hidden"> ({status})</span>
-              </li>
-            );
-          })}
+          {WORKFLOW_STEPS.map((label, index) => (
+            <li
+              key={label}
+              className={`workflow-step${step === index + 1 ? " workflow-step-active" : ""}`}
+              aria-current={step === index + 1 ? "step" : undefined}
+            >
+              <span aria-hidden="true">{index + 1}</span> {label}
+            </li>
+          ))}
         </ol>
 
-        <div className="form-section">
-          <label className="field-label" htmlFor="load-type">Tipo de carga <span>obrigatório</span></label>
-          <p className="field-help" id="load-type-help">Define os campos e as validações desta análise.</p>
-          <select
-            ref={loadTypeSelect}
-            id="load-type"
-            className="form-select load-type-select"
-            value={loadType}
-            onChange={onLoadTypeChange}
-            aria-describedby="load-type-help"
-            required
-            aria-required="true"
-          >
-            <option value="">Selecione o tipo de dados</option>
-            <option value="employees">Funcionários</option>
-            <option value="position-statistics">Estatística de cargo</option>
-          </select>
-        </div>
-
-        <div className={`drop-zone${dragging ? " drop-zone-active" : ""}${source ? " drop-zone-loaded" : ""}`}
-          onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
-          onDragOver={(event) => event.preventDefault()}
-          onDragLeave={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
-          }}
+        <div
+          className={`drop-zone${dragging ? " drop-zone-active" : ""}${result ? " drop-zone-loaded" : ""}`}
+          onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
+          onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
         >
           <span className="file-mark" aria-hidden="true">
-            <svg viewBox="0 0 28 28" fill="none"><path d="M14 18V5m0 0L9.5 9.5M14 5l4.5 4.5M5 17v6h18v-6" /></svg>
+            <svg viewBox="0 0 24 24" fill="none"><path d="M7 3.5h7l4 4v13H7zM14 3.5v4h4M9.5 13h5M9.5 16.5h5" /></svg>
           </span>
           <div className="drop-copy">
-            <strong>{source ? "Arquivo pronto para revisar" : "Solte seu arquivo aqui"}</strong>
-            <p>{source ? `${source.kind === "csv" ? "CSV" : "Planilha"} · ${file ? formatBytes(file.size) : ""} · conteúdo mantido no navegador` : "ou selecione no seu dispositivo"}</p>
+            <strong>{result ? result.fileName : "Arraste o arquivo para cá"}</strong>
+            <p>{result ? "Arraste outro arquivo para substituir a prévia." : "ou use o botão ao lado. Aceitamos .csv, .xlsx e .xlsm de até 25 MB."}</p>
           </div>
-          <label className="button button-outline file-select" htmlFor="file-input">Selecionar arquivo
-            <input
-              ref={fileInput}
-              id="file-input"
-              className="file-input"
-              type="file"
-              accept=".csv,.xlsx,.xlsm,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12"
-              onChange={onFileChange}
-              aria-describedby="file-types"
-            />
-          </label>
-          <span id="file-types" className="file-types">CSV, XLSX ou XLSM <span aria-hidden="true">·</span> até 25 MB</span>
+          <div className="file-select">
+            <input ref={inputRef} className="file-input" id="arquivo" type="file" accept=".csv,.xlsx,.xlsm" onChange={onInputChange} disabled={loading} />
+            <button className="button button-primary" type="button" onClick={() => inputRef.current?.click()} disabled={loading}>
+              Selecionar arquivo
+            </button>
+          </div>
         </div>
 
-        {reading && <p className="status-message"><span className="spinner" aria-hidden="true" /> Lendo arquivo neste navegador…</p>}
-        {error && <p className="inline-alert" role="alert"><span aria-hidden="true">!</span>{error}</p>}
-
-        {source && (
-          <div className="source-details">
-            <div className="source-overview">
-              <span className="source-icon" aria-hidden="true">✓</span>
-              <div><strong>Leitura concluída</strong><span>{source.headers.length} colunas reconhecíveis · {formatCount(source.rows.length)} registros</span></div>
-            </div>
-            {source.sheetNames.length > 1 && (
-              <div className="sheet-picker" aria-busy={reading}>
-                <label className="field-label" htmlFor="sheet-select">Planilha</label>
-                <select ref={sheetSelect} id="sheet-select" className="form-select" value={source.sheetName} onChange={(event) => void onSheetChange(event)}>
-                  {source.sheetNames.map((name, index) => <option value={name} key={`${name}-${index}`}>{name}</option>)}
-                </select>
-              </div>
-            )}
+        {loading && (
+          <p className="status-message" role="status">
+            <span className="spinner" aria-hidden="true" /> Lendo o arquivo… arquivos grandes podem levar alguns segundos.
+          </p>
+        )}
+        {error && (
+          <div className="inline-alert" role="alert">
+            <span aria-hidden="true">!</span>
+            <p>{error}</p>
           </div>
         )}
+        {notice && <p className="status-message notice-message" role="status">{notice}</p>}
 
-        {source && loadType && (
-          <section className="mapping-section" aria-labelledby="mapping-heading">
-            <div className="subsection-heading">
-              <div><span className="section-index">Etapa 02</span><h3 id="mapping-heading">Associe os campos</h3></div>
-              <p>Colunas encontradas podem ser sugeridas automaticamente. Confira cada seleção.</p>
+        {result && (
+          <section className="results-section" aria-labelledby="resumo-titulo">
+            <div className="result-banner">
+              <span className="result-check" aria-hidden="true">✓</span>
+              <div>
+                <h2 id="resumo-titulo" tabIndex={-1} ref={summaryRef}>Resumo da leitura</h2>
+                <p>Confira os dados antes de confirmar. Nada foi gravado ainda.</p>
+              </div>
             </div>
-            <div className="mapping-grid">
-              {fields.map((field) => {
-                const fieldError = mappingErrors[field.key];
-                const errorId = `map-${field.key}-error`;
-                return (
-                  <div className="mapping-item" key={field.key}>
-                    <label className="field-label" htmlFor={`map-${field.key}`}>
-                      {field.label}{field.required && <span className="required-tag">Obrigatório</span>}
-                      {field.sensitive && <span className="sensitive-tag">Sensível</span>}
-                    </label>
-                    <select
-                      className="form-select"
-                      id={`map-${field.key}`}
-                      value={mapping[field.key] ?? ""}
-                      onChange={(event) => onMappingChange(field.key, event.currentTarget.value)}
-                      aria-disabled={busy || undefined}
-                      required={field.required}
-                      aria-required={field.required || undefined}
-                      aria-invalid={fieldError ? true : undefined}
-                      aria-describedby={fieldError ? errorId : undefined}
-                    >
-                      <option value="">Não mapeado</option>
-                      {source.headers.map((header, index) => (
-                        <option value={String(index)} key={`${index}-${header}`}>{header || `Coluna ${index + 1}`}</option>
-                      ))}
-                    </select>
-                    {fieldError && <p className="field-error" id={errorId}>{fieldError}</p>}
-                  </div>
-                );
-              })}
+            <dl className="summary-grid">
+              <div><dt>Tipo detectado</dt><dd>{KIND_LABEL[result.kind]}</dd></div>
+              <div><dt>Arquivo</dt><dd className="summary-file">{result.fileName}</dd></div>
+              <div><dt>Registros</dt><dd>{formatCount(totalRecords)}</dd></div>
+            </dl>
+            {result.countsBySheet.length > 1 || result.kind === "planilha" ? (
+              <ul className="sheet-counts" aria-label="Registros por aba">
+                {result.countsBySheet.map((item) => (
+                  <li key={item.sheet}><strong>{item.sheet}</strong>: {formatCount(item.count)} registros</li>
+                ))}
+              </ul>
+            ) : null}
+
+            {result.warnings.length > 0 ? (
+              <div className="errors-block">
+                <h3>Avisos <span>{result.warnings.length}</span></h3>
+                <ul className="record-errors">
+                  {result.warnings.map((warning) => (
+                    <li key={warning.code + warning.message}>
+                      <strong>{WARNING_LABEL[warning.code] ?? "Aviso"}</strong>
+                      <span>{warning.message} ({formatCount(warning.rows.length)} {warning.rows.length === 1 ? "linha" : "linhas"})</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="no-warnings">Nenhum aviso: todas as linhas foram lidas sem problemas.</p>
+            )}
+
+            <div className="preview-block">
+              <div className="preview-heading">
+                <h3>Prévia</h3>
+                <span>Primeiras {Math.min(PREVIEW_LIMIT, totalRecords)} de {formatCount(totalRecords)} linhas</span>
+              </div>
+              {totalRecords === 0 ? (
+                <p className="empty-result">Nenhum registro encontrado neste arquivo.</p>
+              ) : result.kind === "ecidade" ? (
+                <PreviewTable columns={ECIDADE_COLUMNS} rows={(result as ImportResult<ServidorECidade>).records.slice(0, PREVIEW_LIMIT)} />
+              ) : (
+                <PreviewTable columns={PLANILHA_COLUMNS} rows={(result as ImportResult<ColaboradorPlanilha>).records.slice(0, PREVIEW_LIMIT)} />
+              )}
             </div>
+
             <div className="action-row">
-              <p>Valores são conferidos apenas nesta tela. Nada será gravado.</p>
-              <button className="button button-primary" type="button" onClick={() => void runAnalysis()} aria-disabled={busy || undefined}>
-                {analyzing ? <><span className="spinner spinner-light" aria-hidden="true" /> Analisando…</> : <>Analisar prévia <span aria-hidden="true">→</span></>}
+              <p>Ao confirmar, os registros deste tipo são gravados neste navegador.</p>
+              <button className="button button-primary" type="button" onClick={onConfirmImport} disabled={saving || totalRecords === 0}>
+                Confirmar importação
               </button>
             </div>
           </section>
         )}
 
-        {analysis?.configurationIssues.length ? (
-          <div className="configuration-alert" role="alert" ref={configurationAlert} tabIndex={-1}>
-            <strong>Revise o mapeamento antes de analisar:</strong>
-            <ul>{analysis.configurationIssues.map((issue) => <li key={issue}>{issue}</li>)}</ul>
-          </div>
-        ) : null}
-
-        {analysisReady && analysis && (
-          <section className="results-section" aria-labelledby="results-heading">
-            <div className="result-banner">
-              <span className="result-check" aria-hidden="true">✓</span>
-              <div><h3 id="results-heading">Prévia pronta</h3><p>Análise concluída neste navegador. Os dados não foram salvos.</p></div>
-            </div>
-            <dl className="result-counts">
-              <div><dt>Registros válidos</dt><dd>{formatCount(analysis.validCount)}</dd></div>
-              <div><dt>Registros com erros</dt><dd>{formatCount(analysis.invalidCount)}</dd></div>
-              <div><dt>Total analisado</dt><dd>{formatCount(analysis.rows.length)}</dd></div>
-            </dl>
-
-            {analysis.rows.length === 0 ? (
-              <div className="empty-result"><strong>Nenhum registro para analisar.</strong><p>O arquivo contém cabeçalhos, mas não há linhas preenchidas abaixo deles.</p></div>
-            ) : (
-              <>
-                {analysis.validCount > 0 && (
-                  <div className="preview-block">
-                    <div className="preview-heading">
-                      <div><h4>Registros válidos</h4><span>Exibindo até {PREVIEW_LIMIT} linhas para conferência.</span></div>
-                      {hasSensitiveMapped && (
-                        <label className="sensitive-toggle">
-                          <input type="checkbox" checked={showSensitive} onChange={(event) => setShowSensitive(event.currentTarget.checked)} />
-                          Mostrar dados sensíveis
-                        </label>
-                      )}
-                    </div>
-                    <div className="table-scroll" tabIndex={0} role="region" aria-label="Prévia de registros válidos; tabela rolável horizontalmente">
-                      <table>
-                        <caption className="visually-hidden">
-                          Registros válidos — primeiras {previewRows.length} linhas{hasSensitiveMapped && !showSensitive ? "; dados sensíveis ocultos" : ""}
-                        </caption>
-                        <thead><tr><th scope="col">Registro</th>{visibleFields.map((field) => <th scope="col" key={field.key}>{field.label}</th>)}</tr></thead>
-                        <tbody>{previewRows.map((row) => (
-                          <tr key={row.record}><th scope="row">{row.record}</th>{visibleFields.map((field) => <td key={field.key}>{row.values[field.key] || <span className="empty-cell">—</span>}</td>)}</tr>
-                        ))}</tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-                {analysis.invalidCount > 0 && (
-                  <div className="errors-block">
-                    <h4>Registros para corrigir <span>{formatCount(analysis.invalidCount)}</span></h4>
-                    <p className="errors-intro">Os valores importados não são repetidos aqui. Confira o número do registro e os campos indicados.</p>
-                    <ul className="record-errors">
-                      {errorRows.map((row) => <li key={row.record}><strong>Registro {row.record}</strong><span>{row.issues.join(" · ")}</span></li>)}
-                    </ul>
-                    {analysis.invalidCount > PREVIEW_LIMIT && <p className="more-errors">Mais {analysis.invalidCount - PREVIEW_LIMIT} registros com erro não exibidos.</p>}
-                  </div>
-                )}
-              </>
-            )}
-          </section>
-        )}
-
         <div className="panel-footer">
-          <span className="footer-lock" aria-hidden="true">◈</span>
-          <p>Esta versão não grava dados e não envia arquivos para nenhum serviço.</p>
-          {source && <button className="text-button" type="button" onClick={resetImport} aria-disabled={busy || undefined}>Limpar e começar novamente</button>}
+          <p>Os dados ficam apenas neste navegador e não são enviados a nenhum servidor.</p>
+          <button className="text-button" type="button" onClick={() => setClearOpen(true)}>Limpar dados importados</button>
         </div>
-      </section>
-
-      <div className="page-footnote">
-        <span className="footnote-line" aria-hidden="true" />
-        <p>Importação com conferência antes de qualquer decisão.</p>
-        <span className="footnote-mark" aria-hidden="true">CC / 01</span>
       </div>
-      <p className="visually-hidden" role="status" aria-live="polite">{announcement}</p>
+
+      <ConfirmDialog
+        open={replaceOpen}
+        title="Substituir dados existentes?"
+        confirmLabel="Substituir e importar"
+        busy={saving}
+        onCancel={() => setReplaceOpen(false)}
+        onConfirm={() => result && void save(result)}
+      >
+        <p>
+          Já existem dados importados de <strong>{result ? KIND_LABEL[result.kind] : ""}</strong> neste navegador. Eles serão substituídos pelo conteúdo de{" "}
+          <strong>{result?.fileName}</strong>. O outro tipo de dado não é alterado.
+        </p>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={clearOpen}
+        title="Limpar dados importados?"
+        confirmLabel="Limpar tudo"
+        busy={clearing}
+        onCancel={() => setClearOpen(false)}
+        onConfirm={() => void onClear()}
+      >
+        <p>Os dois tipos de dados (e-Cidade e Planilha) serão apagados deste navegador. Essa ação não pode ser desfeita.</p>
+      </ConfirmDialog>
     </div>
   );
 }

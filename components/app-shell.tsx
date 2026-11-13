@@ -119,7 +119,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </nav>
         <div className="sidebar-bottom">
           <span className="status-dot" aria-hidden="true" />
-          <span>Prévia local · sem backend</span>
+          <span>Dados só neste navegador</span>
         </div>
       </div>
       <div className="page-column" inert={isMobileMenuOpen}>

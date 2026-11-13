@@ -28,3 +28,9 @@ ACESSO*.txt
 # baseline de seguranca (publish_github.py)
 .astro/
 .svelte-kit/
+
+# amostras reais (dados pessoais) - nunca versionar
+amostras/
+*.xlsm
+GERAL_ECIDADE*.csv
+CADASTRO_FUNCIONAL*
