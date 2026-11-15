@@ -14,7 +14,17 @@ Autoridade: skill [`frontend-design`](../.claude/skills/frontend-design/SKILL.md
 
 ## Tokens
 
-Cores semânticas (claro / escuro). Valores partem da cor de marca atual (`#1d4fd6`) para manter identidade; ajustar conforme a referência do usuário.
+Implementados em `app/globals.css` (2026-11-15). Direção: institucional de setor público — azul-petróleo como cor de marca, fundo cinza frio, menu lateral escuro. Ajustar conforme a referência do usuário.
+
+| Papel | Claro | Escuro |
+|---|---|---|
+| `primary` (azul-petróleo) | `#0b5c74` | `#55b7cf` |
+| `background` | `#f4f6f8` | `#0d151b` |
+| `foreground` | `#15202b` | `#e3eaef` |
+| `sidebar` | `#0e2a33` | `#091216` |
+| `success` / `warning` / `destructive` | `#1c7547` / `#965800` / `#b42318` | `#4fc48c` / `#efb459` / `#f2786b` |
+
+Tipografia: **Public Sans** (fonte criada para serviços públicos), empacotada via `@fontsource-variable/public-sans` + `next/font/local`.
 
 | Token | Uso |
 |---|---|
@@ -30,7 +40,8 @@ Cores semânticas (claro / escuro). Valores partem da cor de marca atual (`#1d4f
 - **Raios:** `rounded-lg` (cartões), `rounded-md` (campos e botões), `rounded-full` (selos).
 - **Sombras:** `shadow-sm` em cartões; sem sombras fortes.
 - **Espaçamento:** base de 4px; cartões com `p-5` ou `p-6`; intervalo entre cartões `gap-4`/`gap-6`; largura máxima do conteúdo `max-w-7xl`.
-- **Tipografia:** uma família sans (via `next/font`), escala: título de página `text-2xl font-semibold`, título de cartão `text-base font-medium`, indicador `text-3xl font-semibold tabular-nums`, apoio `text-sm text-muted-foreground`.
+- **Indicadores:** uma faixa única com divisórias finas (não quatro cartões soltos); valores em reais um nível menor para caber.
+- **Tipografia:** Public Sans (via `next/font/local`), escala: título de página `text-2xl font-semibold`, título de cartão `text-base font-medium`, indicador `text-3xl font-semibold tabular-nums`, apoio `text-sm text-muted-foreground`.
 
 ## Estrutura da aplicação
 
@@ -59,7 +70,7 @@ Cores semânticas (claro / escuro). Valores partem da cor de marca atual (`#1d4f
 
 Quatro cartões compactos: **Total de pessoas**, **Vagas ocupadas**, **Vagas livres**, **Taxa de ocupação**.
 
-## Plano de migração (ordem)
+## Plano de migração (ordem) — itens 1 a 6 concluídos em 2026-11-15
 
 1. Instalar dependências: `tailwindcss`, `@tailwindcss/postcss`, `class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react`, `tw-animate-css` e primitivos Radix exigidos pelos componentes shadcn.
 2. Configurar `postcss.config.mjs`, `components.json`, `lib/utils.ts` (`cn`) e tokens em `app/globals.css`.

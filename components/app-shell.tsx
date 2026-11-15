@@ -4,36 +4,37 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
+import {
+  ChartColumn,
+  ChevronRight,
+  CircleHelp,
+  ClipboardList,
+  LayoutGrid,
+  Menu,
+  Monitor,
+  Moon,
+  Settings,
+  ShieldCheck,
+  Sun,
+  Upload,
+  Users,
+  Wallet,
+  X,
+  type LucideIcon,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
-const navigation = [
-  { label: "Dashboard", href: "/dashboard", icon: "dashboard" },
-  { label: "Funcionários", href: "/employees", icon: "people" },
-  { label: "Orçamento", href: "/budget", icon: "budget" },
-  { label: "Importar Dados", href: "/", icon: "import" },
-  { label: "Estatísticas de Cargo", href: "/statistics", icon: "chart" },
-  { label: "Manutenção de Cargos", href: "/positions", icon: "roles" },
-  { label: "Configurações", href: "/settings", icon: "settings" },
-  { label: "Ajuda", href: "/help", icon: "help" },
+const navigation: { label: string; href: string; icon: LucideIcon }[] = [
+  { label: "Dashboard", href: "/dashboard", icon: LayoutGrid },
+  { label: "Funcionários", href: "/employees", icon: Users },
+  { label: "Orçamento", href: "/budget", icon: Wallet },
+  { label: "Importar Dados", href: "/", icon: Upload },
+  { label: "Estatísticas de Cargo", href: "/statistics", icon: ChartColumn },
+  { label: "Manutenção de Cargos", href: "/positions", icon: ClipboardList },
+  { label: "Configurações", href: "/settings", icon: Settings },
+  { label: "Ajuda", href: "/help", icon: CircleHelp },
 ];
-
-function NavIcon({ name }: { name: string }) {
-  const common = { width: 19, height: 19, viewBox: "0 0 24 24", fill: "none", "aria-hidden": true as const };
-  const paths: Record<string, ReactNode> = {
-    dashboard: <><rect x="3.5" y="3.5" width="7" height="7" rx="1" /><rect x="13.5" y="3.5" width="7" height="7" rx="1" /><rect x="3.5" y="13.5" width="7" height="7" rx="1" /><rect x="13.5" y="13.5" width="7" height="7" rx="1" /></>,
-    people: <><circle cx="9" cy="8" r="3" /><path d="M3.5 19v-1a5.5 5.5 0 0 1 11 0v1zM16 5.5a3 3 0 0 1 0 5.8M18 14a4.5 4.5 0 0 1 2.5 4v1" /></>,
-    budget: <><path d="M4 5.5h16v13H4zM8 9h8M8 13h3M16.5 12.5h.01" /><path d="M7 5.5V3.8h10v1.7" /></>,
-    import: <><path d="M12 15V4m0 0L8 8m4-4 4 4M5 14v5h14v-5" /></>,
-    chart: <><path d="M4 19.5h16M6.5 16v-5m5 5V5m5 11v-8" /><circle cx="6.5" cy="9" r="1" /><circle cx="11.5" cy="3" r="1" /><circle cx="16.5" cy="6" r="1" /></>,
-    roles: <><path d="M5 4.5h14v15H5zM8 8h8M8 12h5M8 16h3" /><path d="m15.5 15.5 1.5 1.5 3-3" /></>,
-    settings: <><circle cx="12" cy="12" r="3" /><path d="m19.4 15 .1.1 1.5 1.2-1.5 2.6-1.8-.7a7.8 7.8 0 0 1-1.5.9l-.3 1.9h-3l-.3-1.9a7.8 7.8 0 0 1-1.5-.9l-1.8.7-1.5-2.6L7.3 15a7.7 7.7 0 0 1 0-1.8l-1.5-1.3 1.5-2.6 1.8.7a7.8 7.8 0 0 1 1.5-.9l.3-1.9h3l.3 1.9a7.8 7.8 0 0 1 1.5.9l1.8-.7 1.5 2.6-1.5 1.3a7.7 7.7 0 0 1 0 1.8Z" /></>,
-    help: <><circle cx="12" cy="12" r="8.5" /><path d="M9.8 9a2.3 2.3 0 1 1 3.9 1.7c-1 .9-1.7 1.2-1.7 2.8M12 17h.01" /></>,
-  };
-  return (
-    <svg {...common} stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-      {paths[name]}
-    </svg>
-  );
-}
 
 type ThemePreference = "light" | "dark" | "system";
 
@@ -79,18 +80,7 @@ function subscribeToTheme(onChange: () => void) {
   };
 }
 
-function ThemeIcon({ name }: { name: ThemePreference }) {
-  const paths: Record<ThemePreference, ReactNode> = {
-    light: <><circle cx="12" cy="12" r="4" /><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4" /></>,
-    dark: <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />,
-    system: <><rect x="3" y="4.5" width="18" height="12" rx="2" /><path d="M9 20h6M12 16.5V20" /></>,
-  };
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {paths[name]}
-    </svg>
-  );
-}
+const THEME_ICONS: Record<ThemePreference, LucideIcon> = { light: Sun, dark: Moon, system: Monitor };
 
 function ThemeSwitch() {
   const theme = useSyncExternalStore(subscribeToTheme, readTheme, () => "system" as ThemePreference);
@@ -109,14 +99,14 @@ function ThemeSwitch() {
   }
 
   return (
-    <div className="theme-switch" role="radiogroup" aria-label="Tema da interface">
+    <div className="flex items-center gap-0.5 rounded-md border bg-muted p-0.5" role="radiogroup" aria-label="Tema da interface">
       {THEME_OPTIONS.map((item) => (
         <button
           key={item.value}
           ref={(element) => {
             refs.current[item.value] = element;
           }}
-          className="theme-option"
+          className="inline-flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-sm px-2 text-sm text-muted-foreground transition-colors hover:text-foreground aria-checked:bg-card aria-checked:text-foreground aria-checked:shadow-xs"
           type="button"
           role="radio"
           aria-checked={theme === item.value}
@@ -125,15 +115,18 @@ function ThemeSwitch() {
           onClick={() => applyTheme(item.value)}
           onKeyDown={onKeyDown}
         >
-          <ThemeIcon name={item.value} />
-          <span className="theme-label" aria-hidden="true">{item.label}</span>
+          {(() => {
+            const Icon = THEME_ICONS[item.value];
+            return <Icon className="size-4" aria-hidden="true" />;
+          })()}
+          <span className="hidden lg:inline" aria-hidden="true">{item.label}</span>
         </button>
       ))}
     </div>
   );
 }
 
-const MOBILE_QUERY = "(max-width: 680px)";
+const MOBILE_QUERY = "(max-width: 767px)";
 
 function subscribeToMobileQuery(onChange: () => void) {
   const query = window.matchMedia(MOBILE_QUERY);
@@ -177,57 +170,92 @@ export default function AppShell({ children }: { children: ReactNode }) {
     document.getElementById("main-content")?.focus();
   }
 
+  const currentLabel = navigation.find((item) => item.href === current)?.label ?? "Início";
+
   return (
-    <div className="app-frame" onKeyDown={onShellKeyDown}>
-      <a className="skip-link" href="#main-content">Pular para o conteúdo</a>
-      <button
-        ref={menuButton}
-        className="mobile-menu-button"
-        type="button"
-        aria-label={menuOpen ? "Fechar navegação" : "Abrir navegação"}
-        aria-expanded={menuOpen}
-        aria-controls="primary-navigation"
-        onClick={() => setMenuOpen((open) => !open)}
+    <div className="min-h-dvh md:pl-64" onKeyDown={onShellKeyDown}>
+      <a
+        className="sr-only z-[60] rounded-md bg-primary px-4 py-2 text-primary-foreground focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
+        href="#main-content"
       >
-        <span aria-hidden="true">{menuOpen ? "×" : "☰"}</span>
-      </button>
-      {menuOpen && <button className="nav-scrim" type="button" aria-label="Fechar navegação" tabIndex={-1} onClick={closeMenu} />}
-      <div ref={sidebar} id="primary-navigation" className={`sidebar${menuOpen ? " sidebar-open" : ""}`}>
-        <Link className="brand" href="/" onClick={onNavigate}>
-          <span className="brand-mark" aria-hidden="true"><span /></span>
-          <span className="brand-name">Controle<span>Colaboradores</span></span>
+        Pular para o conteúdo
+      </a>
+      {menuOpen && (
+        <button className="fixed inset-0 z-40 bg-foreground/40 md:hidden" type="button" aria-label="Fechar navegação" tabIndex={-1} onClick={closeMenu} />
+      )}
+      <div
+        ref={sidebar}
+        id="primary-navigation"
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-sidebar text-sidebar-foreground transition-transform duration-200 md:translate-x-0",
+          menuOpen ? "translate-x-0" : "-translate-x-full",
+          !menuOpen && "max-md:invisible",
+        )}
+      >
+        <Link className="flex items-center gap-3 px-5 pt-6 pb-7 rounded-md focus-visible:outline-sidebar-ring" href="/" onClick={onNavigate}>
+          <span className="grid size-9 place-items-center rounded-md bg-sidebar-ring/15 text-sidebar-ring" aria-hidden="true">
+            <Users className="size-5" />
+          </span>
+          <span className="flex flex-col leading-tight">
+            <span className="text-[0.95rem] font-semibold text-white">Controle</span>
+            <span className="text-sm text-sidebar-muted">Colaboradores</span>
+          </span>
         </Link>
-        <div className="nav-caption">Área de gestão</div>
-        <nav className="primary-navigation" aria-label="Navegação principal">
+        <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3" aria-label="Navegação principal">
           {navigation.map((item) => {
             const active = current === item.href;
+            const Icon = item.icon;
             return (
               <Link
-                className={`nav-link${active ? " nav-link-active" : ""}`}
+                className={cn(
+                  "relative flex min-h-10 items-center gap-3 rounded-md px-3 text-sm transition-colors focus-visible:outline-sidebar-ring",
+                  active
+                    ? "bg-sidebar-accent font-medium text-white before:absolute before:inset-y-2 before:left-0 before:w-[3px] before:rounded-full before:bg-sidebar-ring"
+                    : "text-sidebar-foreground/85 hover:bg-sidebar-accent/60 hover:text-white",
+                )}
                 href={item.href}
                 key={item.href}
                 aria-current={active ? "page" : undefined}
                 onClick={onNavigate}
               >
-                <NavIcon name={item.icon} />
+                <Icon className={cn("size-[18px] shrink-0", active ? "text-sidebar-ring" : "text-sidebar-muted")} aria-hidden="true" />
                 <span>{item.label}</span>
               </Link>
             );
           })}
         </nav>
-        <div className="sidebar-bottom">
-          <span className="status-dot" aria-hidden="true" />
-          <span>Dados só neste navegador</span>
+        <div className="m-3 flex items-center gap-2.5 rounded-md border border-sidebar-border px-3 py-2.5 text-xs text-sidebar-muted">
+          <ShieldCheck className="size-4 shrink-0 text-sidebar-ring" aria-hidden="true" />
+          <span>Dados guardados só neste navegador</span>
         </div>
       </div>
-      <div className="page-column" inert={isMobileMenuOpen}>
-        <header className="topbar">
-          <p className="topbar-trail">
-            Gestão de pessoas <span aria-hidden="true">/</span> <strong>{navigation.find((item) => item.href === current)?.label ?? "Início"}</strong>
+      <div className="flex min-h-dvh flex-col" inert={isMobileMenuOpen}>
+        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b bg-background/85 px-4 backdrop-blur-sm sm:px-6 lg:px-8">
+          <Button
+            ref={menuButton}
+            className="md:hidden"
+            variant="ghost"
+            size="icon"
+            type="button"
+            aria-label={menuOpen ? "Fechar navegação" : "Abrir navegação"}
+            aria-expanded={menuOpen}
+            aria-controls="primary-navigation"
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            {menuOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
+          </Button>
+          <p className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">
+            <span className="hidden sm:inline">Gestão de pessoas</span>
+            <ChevronRight className="hidden size-4 sm:inline" aria-hidden="true" />
+            <strong className="truncate font-medium text-foreground">{currentLabel}</strong>
           </p>
-          <ThemeSwitch />
+          <div className="ml-auto">
+            <ThemeSwitch />
+          </div>
         </header>
-        <main className="main-content" id="main-content" tabIndex={-1}>{children}</main>
+        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 outline-none sm:px-6 lg:px-8" id="main-content" tabIndex={-1}>
+          {children}
+        </main>
       </div>
     </div>
   );

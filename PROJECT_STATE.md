@@ -4,6 +4,12 @@
 **Pasta:** `Controle_Colaboradores`  
 **Plano:** [controle-colaboradores.md](./controle-colaboradores.md)
 
+## Migração visual para Tailwind + shadcn/ui (2026-11-15, branch `feat/frontend-design-skill`, não publicada)
+
+Skill `frontend-design` (`.claude/skills/frontend-design/`) é a autoridade visual; regras em `AGENTS.md` e tokens em `docs/GUIA-VISUAL.md`. CSS manual (427 linhas) substituído por Tailwind v4 + componentes no padrão shadcn/ui em `components/ui/` (Radix via `radix-ui`, ícones `lucide-react`); `globals.css` só com tokens de tema claro/escuro. Fonte Public Sans empacotada. Telas migradas: menu lateral, Importar, Funcionários, tabela e páginas em preparação. Lógica, textos de privacidade e acessibilidade preservados (foco visível, skip link, `aria-*`, `prefers-reduced-motion`); diálogos agora usam Radix Dialog.
+Validação: lint OK, typecheck OK, 45/47 testes (2 skip = amostras reais), build com BASE_PATH OK; conferência por captura de tela em claro/escuro, 1280px e 375px, com dados fictícios.
+Pendências: teste manual com as amostras reais; revisão de acessibilidade com leitor de tela; tela de cards por função (vagas ocupadas/livres).
+
 ## Importação v2 + redesign (2026-11-13, commit local, aguardando autorização de publicação)
 
 Diretriz e decisões do usuário: [docs/DIRETRIZ-IMPORTACAO-V2.md](docs/DIRETRIZ-IMPORTACAO-V2.md). CSV e-Cidade (windows-1252, cabeçalho na linha 5) e planilha XLSX/XLSM (só as 2 primeiras abas, fusão com Origem); "Tipo de carga" e "Associe os campos" removidos; passos Arquivo → Prévia → Confirmação; persistência em IndexedDB (autorizada) com "Limpar dados importados"; nova rota `app/employees` com 2 abas (busca, ordenação, filtros, paginação de 50, exportar CSV, somas). `lib/import-data.ts` e as regras antigas (CPF, cargo/quantidade/ano/mês) foram removidos; `tsconfig` com `allowImportingTsExtensions` (autorizado).

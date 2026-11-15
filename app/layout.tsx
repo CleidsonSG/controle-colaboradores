@@ -1,7 +1,16 @@
 import type { Metadata } from "next";
+import localFont from "next/font/local";
 import type { ReactNode } from "react";
 import AppShell from "@/components/app-shell";
 import "./globals.css";
+
+// Public Sans: tipografia criada para serviços públicos, empacotada no build (sem CDN em tempo de execução).
+const publicSans = localFont({
+  src: "../node_modules/@fontsource-variable/public-sans/files/public-sans-latin-wght-normal.woff2",
+  variable: "--font-public-sans",
+  weight: "100 900",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: {
@@ -16,7 +25,7 @@ const THEME_SCRIPT = `try{var t=localStorage.getItem("cc-theme");if(t==="light"|
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="pt-BR" suppressHydrationWarning>
+    <html lang="pt-BR" className={publicSans.variable} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
