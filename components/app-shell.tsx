@@ -10,6 +10,7 @@ import {
   CircleHelp,
   ClipboardList,
   LayoutGrid,
+  LogOut,
   Menu,
   Monitor,
   Moon,
@@ -22,14 +23,16 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+import { useAuth } from "@/components/auth-gate";
 import { Button } from "@/components/ui/button";
+import { storageMode } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 
 const navigation: { label: string; href: string; icon: LucideIcon }[] = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutGrid },
+  { label: "Painel de cargos", href: "/", icon: LayoutGrid },
   { label: "Funcionários", href: "/employees", icon: Users },
   { label: "Orçamento", href: "/budget", icon: Wallet },
-  { label: "Importar Dados", href: "/", icon: Upload },
+  { label: "Importar Dados", href: "/import", icon: Upload },
   { label: "Estatísticas de Cargo", href: "/statistics", icon: ChartColumn },
   { label: "Manutenção de Cargos", href: "/positions", icon: ClipboardList },
   { label: "Configurações", href: "/settings", icon: Settings },
@@ -122,6 +125,21 @@ function ThemeSwitch() {
           <span className="hidden lg:inline" aria-hidden="true">{item.label}</span>
         </button>
       ))}
+    </div>
+  );
+}
+
+function UserMenu() {
+  const { email, signOut } = useAuth();
+  if (!signOut) return null;
+  return (
+    <div className="flex items-center gap-2">
+      <span className="hidden max-w-48 truncate text-sm text-muted-foreground xl:inline" title={email ?? undefined}>{email}</span>
+      <Button variant="ghost" size="sm" type="button" onClick={() => void signOut()}>
+        <LogOut aria-hidden="true" />
+        <span className="hidden sm:inline">Sair</span>
+        <span className="sr-only sm:hidden">Sair</span>
+      </Button>
     </div>
   );
 }
@@ -226,7 +244,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </nav>
         <div className="m-3 flex items-center gap-2.5 rounded-md border border-sidebar-border px-3 py-2.5 text-xs text-sidebar-muted">
           <ShieldCheck className="size-4 shrink-0 text-sidebar-ring" aria-hidden="true" />
-          <span>Dados guardados só neste navegador</span>
+          <span>{storageMode() === "supabase" ? "Dados no Supabase, com acesso por login" : "Dados guardados só neste navegador"}</span>
         </div>
       </div>
       <div className="flex min-h-dvh flex-col" inert={isMobileMenuOpen}>
@@ -249,8 +267,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
             <ChevronRight className="hidden size-4 sm:inline" aria-hidden="true" />
             <strong className="truncate font-medium text-foreground">{currentLabel}</strong>
           </p>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
             <ThemeSwitch />
+            <UserMenu />
           </div>
         </header>
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 outline-none sm:px-6 lg:px-8" id="main-content" tabIndex={-1}>

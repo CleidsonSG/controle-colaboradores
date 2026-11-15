@@ -17,13 +17,13 @@ const COLUMNS: { label: string; aliases: string[] }[] = [
   { label: "Indicação", aliases: ["indicacao"] },
 ];
 
-type ReadCell = { value: string | number | null; formulaWithoutValue: boolean };
+export type ReadCell = { value: string | number | null; formulaWithoutValue: boolean };
 
 function pad(value: number): string {
   return String(value).padStart(2, "0");
 }
 
-function readCell(cell: Cell): ReadCell {
+export function readCell(cell: Cell): ReadCell {
   let value: unknown = cell.value;
   let formulaWithoutValue = false;
   if (value !== null && typeof value === "object" && !(value instanceof Date)) {
@@ -52,7 +52,7 @@ function readCell(cell: Cell): ReadCell {
   return { value: (value as string | number | null) ?? null, formulaWithoutValue };
 }
 
-function rowTexts(worksheet: Worksheet, rowNumber: number): string[] {
+export function rowTexts(worksheet: Worksheet, rowNumber: number): string[] {
   const texts: string[] = [];
   worksheet.getRow(rowNumber).eachCell({ includeEmpty: true }, (cell, column) => {
     const read = readCell(cell).value;
@@ -70,7 +70,7 @@ function findHeaderRow(worksheet: Worksheet): number {
   return FALLBACK_HEADER_ROW;
 }
 
-async function loadWorkbook(buffer: ArrayBuffer) {
+export async function loadWorkbook(buffer: ArrayBuffer) {
   const exceljs: typeof import("exceljs") & { default?: typeof import("exceljs") } = await import("exceljs");
   const Workbook = exceljs.default?.Workbook ?? exceljs.Workbook;
   const workbook = new Workbook();
@@ -88,9 +88,20 @@ async function loadWorkbook(buffer: ArrayBuffer) {
 /** Lê as duas primeiras abas (por ordem) da planilha XLSX/XLSM como dados; macros nunca são executadas. */
 export async function parsePlanilhaWorkbook(buffer: ArrayBuffer, fileName: string): Promise<ImportResult<ColaboradorPlanilha>> {
   if (buffer.byteLength === 0) throw new ImportFileError("vazio", "O arquivo está vazio.");
-  const workbook = await loadWorkbook(buffer);
+  return parsePlanilhaFromWorkbook(await loadWorkbook(buffer), fileName);
+}
+
+export type LoadedWorkbook = Awaited<ReturnType<typeof loadWorkbook>>;
+
+/** Ordena as abas pela ordem visível no Excel. */
+export function orderedSheets(workbook: LoadedWorkbook): Worksheet[] {
   const orderOf = (sheet: Worksheet) => (sheet as Worksheet & { orderNo?: number }).orderNo ?? sheet.id;
-  const sheets = [...workbook.worksheets].sort((a, b) => orderOf(a) - orderOf(b)).slice(0, SHEET_ORIGINS.length);
+  return [...workbook.worksheets].sort((a, b) => orderOf(a) - orderOf(b));
+}
+
+/** Mesmo que parsePlanilhaWorkbook, a partir de uma pasta de trabalho já carregada. */
+export function parsePlanilhaFromWorkbook(workbook: LoadedWorkbook, fileName: string): ImportResult<ColaboradorPlanilha> {
+  const sheets = orderedSheets(workbook).slice(0, SHEET_ORIGINS.length);
   if (sheets.length === 0) throw new ImportFileError("vazio", "A planilha não tem abas.");
 
   const warnings = new WarningCollector();

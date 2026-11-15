@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useId, useMemo, useState } from "react";
 import { ArrowRight, CircleAlert, FlaskConical, Minus, Plus, RotateCcw, TriangleAlert } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -10,7 +11,6 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Progress } from "@/components/ui/progress";
 import {
-  FOLHA_SIMULADA,
   alterarVagas,
   aplicarTroca,
   custoCargo,
@@ -28,8 +28,10 @@ const reais = (centavos: number) => moeda.format(centavos / 100);
 const pct = (parte: number, todo: number) => (todo > 0 ? Math.round((parte / todo) * 100) : 0);
 const plural = (n: number, um: string, varios: string) => `${n.toLocaleString("pt-BR")} ${n === 1 ? um : varios}`;
 
-/** Tons do azul-petróleo: do salário maior (mais escuro) ao menor (mais claro). */
-const TONS = ["bg-primary", "bg-primary/85", "bg-primary/70", "bg-primary/55", "bg-primary/40", "bg-primary/25"];
+/** Tom do azul-petróleo pela posição no ranking de salário: do maior (mais escuro) ao menor (mais claro), sem repetir. */
+function tom(index: number, total: number): number {
+  return total <= 1 ? 1 : 1 - (index / (total - 1)) * 0.78;
+}
 
 const TOM_BADGE = { success: "success", warning: "warning", neutral: "secondary" } as const;
 const TOM_BARRA = { success: "bg-success", warning: "bg-warning", neutral: "bg-primary" } as const;
@@ -51,8 +53,8 @@ function BarraFolha({ folha }: { folha: Folha }) {
           return (
             <div
               key={cargo.id}
-              className={cn("h-full border-r border-card transition-[width] duration-300 last:border-r-0", TONS[index % TONS.length])}
-              style={{ width: `${largura}%` }}
+              className="h-full border-r border-card bg-primary transition-[width] duration-300 last:border-r-0"
+              style={{ width: `${largura}%`, opacity: tom(index, ordenados.length) }}
             />
           );
         })}
@@ -60,8 +62,8 @@ function BarraFolha({ folha }: { folha: Folha }) {
       <ul className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
         {ordenados.map((cargo, index) => (
           <li key={cargo.id} className="flex items-center gap-2">
-            <span className={cn("size-3 shrink-0 rounded-sm", TONS[index % TONS.length])} aria-hidden="true" />
-            <span>{cargo.id.replace("AS", "AS ")}</span>
+            <span className="size-3 shrink-0 rounded-sm bg-primary" style={{ opacity: tom(index, ordenados.length) }} aria-hidden="true" />
+            <span className="max-w-48 truncate" title={cargo.nome}>{cargo.nome}</span>
             <span className="text-muted-foreground tabular-nums">{pct(custoCargo(cargo), folha.teto)}%</span>
           </li>
         ))}
@@ -113,7 +115,7 @@ function PainelFolha({ folha, onTeto }: { folha: Folha; onTeto: (centavos: numbe
           </div>
           <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
             <div className="flex flex-col gap-0.5">
-              <dt className="text-sm text-muted-foreground">Vagas criadas</dt>
+              <dt className="text-sm text-muted-foreground">Custo das vagas</dt>
               <dd className="text-xl font-semibold tabular-nums">{reais(resumo.comprometido)}</dd>
             </div>
             <div className="flex flex-col gap-0.5">
@@ -149,7 +151,7 @@ function PainelFolha({ folha, onTeto }: { folha: Folha; onTeto: (centavos: numbe
 function SimuladorTroca({ folha, onAplicar }: { folha: Folha; onAplicar: (origem: string, destino: string, reduzir: number) => void }) {
   const ids = { origem: useId(), destino: useId(), qtd: useId() };
   const porSalario = useMemo(() => [...folha.cargos].sort((a, b) => b.salario - a.salario), [folha.cargos]);
-  const [origem, setOrigem] = useState(porSalario[0]?.id ?? "");
+  const [origem, setOrigem] = useState((porSalario.find((c) => c.vagas > 0) ?? porSalario[0])?.id ?? "");
   const [destino, setDestino] = useState(porSalario[porSalario.length - 1]?.id ?? "");
   const [qtd, setQtd] = useState("1");
   const reduzir = Number(qtd);
@@ -281,8 +283,16 @@ function CartaoCargo({ folha, cargo, onVagas }: { folha: Folha; cargo: Cargo; on
   );
 }
 
-export default function FolhaView() {
-  const [folha, setFolha] = useState<Folha>(FOLHA_SIMULADA);
+type FolhaViewProps = {
+  /** Folha inicial: dados apurados (real) ou valores fictícios (simulada). */
+  inicial: Folha;
+  origem: "real" | "simulada";
+  /** Por que os valores são fictícios (o que falta importar ou informar). */
+  motivo?: string;
+};
+
+export function FolhaView({ inicial, origem, motivo }: FolhaViewProps) {
+  const [folha, setFolha] = useState<Folha>(inicial);
   const [aviso, setAviso] = useState("");
   const porSalario = [...folha.cargos].sort((a, b) => b.salario - a.salario);
 
@@ -292,29 +302,44 @@ export default function FolhaView() {
         <div className="flex max-w-2xl flex-col gap-1.5">
           <h1 className="text-2xl font-semibold tracking-tight">Orçamento da folha</h1>
           <p className="text-muted-foreground">
-            Distribua as vagas dos cargos comissionados dentro do teto da folha. Para abrir vagas de salário menor, reduza vagas de salário maior.
+            Simule a distribuição das vagas dentro do teto da folha. Para abrir vagas de salário menor, reduza vagas de salário maior.
           </p>
         </div>
         <Button
           variant="outline"
           type="button"
           onClick={() => {
-            setFolha(FOLHA_SIMULADA);
-            setAviso("Valores simulados restaurados.");
+            setFolha(inicial);
+            setAviso("Simulação desfeita: valores iniciais restaurados.");
           }}
         >
           <RotateCcw aria-hidden="true" />
-          Restaurar simulação
+          Desfazer simulação
         </Button>
       </header>
 
-      <Alert variant="info">
-        <FlaskConical aria-hidden="true" />
-        <AlertTitle>Valores simulados</AlertTitle>
-        <AlertDescription>
-          Teto, salários e vagas são fictícios até você informar os reais. As alterações valem só enquanto esta tela estiver aberta.
-        </AlertDescription>
-      </Alert>
+      {origem === "simulada" ? (
+        <Alert variant="info">
+          <FlaskConical aria-hidden="true" />
+          <AlertTitle>Valores fictícios</AlertTitle>
+          <AlertDescription>
+            <p>{motivo ?? "Teto, salários e vagas são fictícios."} Enquanto isso, a tela usa valores de exemplo.</p>
+            <div className="pt-1">
+              <Button asChild size="sm" variant="outline">
+                <Link href="/">Ir para o painel de cargos</Link>
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      ) : (
+        <Alert variant="info">
+          <FlaskConical aria-hidden="true" />
+          <AlertTitle>Simulação sobre os dados importados</AlertTitle>
+          <AlertDescription>
+            Parte dos servidores do e-Cidade, dos salários da tabela salarial e do teto informado no painel. As trocas e ajustes aqui não alteram os dados gravados.
+          </AlertDescription>
+        </Alert>
+      )}
 
       <PainelFolha
         folha={folha}

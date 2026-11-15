@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import FolhaView from "@/components/folha-view";
+import Orcamento from "@/components/orcamento";
 
 export const metadata: Metadata = { title: "Orçamento" };
 
 export default function BudgetPage() {
-  return <FolhaView />;
+  return <Orcamento />;
 }

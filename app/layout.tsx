@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import type { ReactNode } from "react";
 import AppShell from "@/components/app-shell";
+import AuthGate from "@/components/auth-gate";
 import "./globals.css";
 
 // Public Sans: tipografia criada para serviços públicos, empacotada no build (sem CDN em tempo de execução).
@@ -14,10 +15,10 @@ const publicSans = localFont({
 
 export const metadata: Metadata = {
   title: {
-    default: "Importar dados · Controle Colaboradores",
+    default: "Painel de cargos · Controle Colaboradores",
     template: "%s · Controle Colaboradores",
   },
-  description: "Prévia local de importação para gestão de colaboradores.",
+  description: "Painel de cargos, vagas e folha de pagamento.",
 };
 
 // Aplica o tema salvo antes da primeira pintura (evita flash). Sem valor salvo, vale o tema do sistema.
@@ -30,7 +31,9 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
       <body>
-        <AppShell>{children}</AppShell>
+        <AuthGate>
+          <AppShell>{children}</AppShell>
+        </AuthGate>
       </body>
     </html>
   );

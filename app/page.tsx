@@ -1,5 +1,5 @@
-import ImportWorkspace from "@/components/import-workspace";
+import PainelCargos from "@/components/painel-cargos";
 
 export default function HomePage() {
-  return <ImportWorkspace />;
+  return <PainelCargos />;
 }

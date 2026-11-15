@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import { Construction } from "lucide-react";
 
 const sections: Record<string, string> = {
-  dashboard: "Dashboard",
   statistics: "Estatísticas de Cargo",
   positions: "Manutenção de Cargos",
   settings: "Configurações",

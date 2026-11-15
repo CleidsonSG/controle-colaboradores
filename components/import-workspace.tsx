@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type ChangeEvent, type DragEvent, type ReactNode } from "react";
-import { Check, CircleAlert, CircleCheck, FileSpreadsheet, FileText, Info, Loader2, ShieldCheck, Trash2, TriangleAlert, Upload } from "lucide-react";
+import { BadgeDollarSign, Check, CircleAlert, CircleCheck, FileSpreadsheet, FileText, Info, Loader2, ShieldCheck, Trash2, TriangleAlert, Upload } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,10 +10,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { detectKind, importFile, ImportFileError } from "@/lib/import";
-import type { ColaboradorPlanilha, ImportKind, ImportResult, ServidorECidade, StoredDataset } from "@/lib/import";
-import { getDataStore } from "@/lib/storage";
+import type { AnyImportResult, AnyStoredDataset, ImportKind } from "@/lib/import";
+import { getDataStore, storageMode } from "@/lib/storage";
 
-type AnyResult = ImportResult<ServidorECidade> | ImportResult<ColaboradorPlanilha>;
+type AnyResult = AnyImportResult;
 
 type Slot =
   | { status: "empty" }
@@ -23,7 +23,7 @@ type Slot =
 
 type ExistingInfo = { importedAt: string; count: number } | null;
 
-const KINDS: ImportKind[] = ["ecidade", "planilha"];
+const KINDS: ImportKind[] = ["ecidade", "planilha", "salarial"];
 const CARD: Record<ImportKind, { title: string; hint: string; accept: string; types: string }> = {
   ecidade: {
     title: "Servidores Comissionados (e-Cidade)",
@@ -37,6 +37,12 @@ const CARD: Record<ImportKind, { title: string; hint: string; accept: string; ty
     accept: ".xlsx,.xlsm",
     types: ".xlsx ou .xlsm",
   },
+  salarial: {
+    title: "Tabela salarial",
+    hint: "Arquivo com as colunas Cargo e Salário, um cargo por linha.",
+    accept: ".csv,.xlsx,.xlsm",
+    types: ".csv, .xlsx ou .xlsm",
+  },
 };
 const STEPS = ["Selecionar arquivos", "Conferir resumo", "Importar"] as const;
 const WARNING_LABEL: Record<string, string> = {
@@ -47,7 +53,8 @@ const WARNING_LABEL: Record<string, string> = {
   "formula-sem-valor": "Fórmulas sem valor calculado",
 };
 
-const EMPTY_SLOTS: Record<ImportKind, Slot> = { ecidade: { status: "empty" }, planilha: { status: "empty" } };
+const EMPTY_SLOTS: Record<ImportKind, Slot> = { ecidade: { status: "empty" }, planilha: { status: "empty" }, salarial: { status: "empty" } };
+const NO_EXISTING: Record<ImportKind, ExistingInfo> = { ecidade: null, planilha: null, salarial: null };
 
 function formatCount(value: number): string {
   return value.toLocaleString("pt-BR");
@@ -180,7 +187,7 @@ function ImportCard({
   const inputRef = useRef<HTMLInputElement>(null);
   const info = CARD[kind];
   const reading = slot.status === "reading";
-  const Icon = kind === "ecidade" ? FileText : FileSpreadsheet;
+  const Icon = kind === "ecidade" ? FileText : kind === "salarial" ? BadgeDollarSign : FileSpreadsheet;
 
   function onChange(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
@@ -267,7 +274,7 @@ function ImportCard({
 
 export default function ImportWorkspace() {
   const [slots, setSlots] = useState<Record<ImportKind, Slot>>(EMPTY_SLOTS);
-  const [existing, setExisting] = useState<Record<ImportKind, ExistingInfo>>({ ecidade: null, planilha: null });
+  const [existing, setExisting] = useState<Record<ImportKind, ExistingInfo>>(NO_EXISTING);
   const [storageError, setStorageError] = useState("");
   const [routeNote, setRouteNote] = useState("");
   const [globalError, setGlobalError] = useState("");
@@ -278,7 +285,7 @@ export default function ImportWorkspace() {
   const [clearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [notice, setNotice] = useState("");
-  const tokens = useRef<Record<ImportKind, number>>({ ecidade: 0, planilha: 0 });
+  const tokens = useRef<Record<ImportKind, number>>({ ecidade: 0, planilha: 0, salarial: 0 });
   const successRef = useRef<HTMLHeadingElement>(null);
 
   const readyKinds = KINDS.filter((kind) => slots[kind].status === "ready");
@@ -289,14 +296,12 @@ export default function ImportWorkspace() {
   async function refreshExisting() {
     try {
       const store = getDataStore();
-      const [ecidade, planilha] = await Promise.all([store.load("ecidade"), store.load("planilha")]);
-      setExisting({
-        ecidade: ecidade ? { importedAt: ecidade.importedAt, count: ecidade.records.length } : null,
-        planilha: planilha ? { importedAt: planilha.importedAt, count: planilha.records.length } : null,
-      });
+      const [ecidade, planilha, salarial] = await Promise.all([store.load("ecidade"), store.load("planilha"), store.load("salarial")]);
+      const info = (dataset: AnyStoredDataset | null): ExistingInfo => (dataset ? { importedAt: dataset.importedAt, count: dataset.records.length } : null);
+      setExisting({ ecidade: info(ecidade), planilha: info(planilha), salarial: info(salarial) });
       setStorageError("");
     } catch {
-      setStorageError("Não foi possível acessar o armazenamento deste navegador. A importação pode não funcionar.");
+      setStorageError(storageMode() === "supabase" ? "Não foi possível acessar o Supabase. Verifique a conexão e o script supabase/schema.sql." : "Não foi possível acessar o armazenamento deste navegador. A importação pode não funcionar.");
     }
   }
 
@@ -308,57 +313,53 @@ export default function ImportWorkspace() {
     if (done) successRef.current?.focus();
   }, [done]);
 
-  async function readInto(kind: ImportKind, file: File) {
-    const token = ++tokens.current[kind];
-    setSlots((current) => ({ ...current, [kind]: { status: "reading", fileName: file.name } }));
+  // Lê o arquivo mostrando o progresso no cartão provável; o resultado vai para o cartão do tipo reconhecido
+  // (um .csv com Cargo e Salário, por exemplo, é tabela salarial, não relatório do e-Cidade).
+  async function readFile(file: File, guess: ImportKind, forced?: ImportKind) {
+    const token = ++tokens.current[guess];
+    setSlots((current) => ({ ...current, [guess]: { status: "reading", fileName: file.name } }));
     try {
-      const result = await importFile(file);
-      if (tokens.current[kind] !== token) return;
-      setSlots((current) => ({ ...current, [kind]: { status: "ready", result } }));
+      const result = await importFile(file, forced);
+      if (tokens.current[guess] !== token) return;
+      if (result.kind === guess) {
+        setSlots((current) => ({ ...current, [guess]: { status: "ready", result } }));
+        return;
+      }
+      tokens.current[result.kind] += 1;
+      setSlots((current) => ({ ...current, [guess]: { status: "empty" }, [result.kind]: { status: "ready", result } }));
+      setRouteNote((current) => `${current ? `${current} ` : ""}“${file.name}” foi reconhecido como ${CARD[result.kind].title} e enviado para esse cartão.`);
     } catch (caught) {
-      if (tokens.current[kind] !== token) return;
-      setSlots((current) => ({ ...current, [kind]: { status: "error", fileName: file.name, message: getErrorMessage(caught) } }));
+      if (tokens.current[guess] !== token) return;
+      setSlots((current) => ({ ...current, [guess]: { status: "error", fileName: file.name, message: getErrorMessage(caught) } }));
     }
   }
 
-  function handleFiles(files: File[]) {
+  /** origin = cartão de onde veio a seleção; o cartão da tabela salarial força esse tipo. */
+  function handleFiles(files: File[], origin?: ImportKind) {
     if (files.length === 0) return;
     setDone(null);
     setNotice("");
     setGlobalError("");
     setRouteNote("");
-    const byKind: Partial<Record<ImportKind, File[]>> = {};
     const invalid: string[] = [];
     for (const file of files) {
-      const kind = detectKind(file.name);
-      if (!kind) invalid.push(file.name);
-      else (byKind[kind] ??= []).push(file);
+      const byExtension = detectKind(file.name);
+      if (!byExtension) {
+        invalid.push(file.name);
+        continue;
+      }
+      if (origin === "salarial") void readFile(file, "salarial", "salarial");
+      else void readFile(file, byExtension);
     }
     if (invalid.length > 0) {
       setGlobalError(
-        `${invalid.length === 1 ? `O arquivo “${invalid[0]}” não foi aceito` : `Estes arquivos não foram aceitos: ${invalid.join(", ")}`}. Envie um arquivo .csv (e-Cidade) ou .xlsx/.xlsm (Planilha) de até 25 MB.`,
+        `${invalid.length === 1 ? `O arquivo “${invalid[0]}” não foi aceito` : `Estes arquivos não foram aceitos: ${invalid.join(", ")}`}. Envie arquivos .csv, .xlsx ou .xlsm de até 25 MB.`,
       );
     }
-    const notes: string[] = [];
-    for (const kind of KINDS) {
-      const list = byKind[kind];
-      if (!list) continue;
-      if (list.length > 1) notes.push(`Foram enviados ${list.length} arquivos de ${CARD[kind].title}; foi usado o último.`);
-      void readInto(kind, list[list.length - 1]);
-    }
-    if (notes.length) setRouteNote(notes.join(" "));
   }
 
-  // Seleção pelo botão de um cartão: se o arquivo for do outro tipo, ele segue para o cartão certo.
   function onCardFiles(origin: ImportKind, files: File[]) {
-    const misrouted = files.filter((file) => {
-      const kind = detectKind(file.name);
-      return kind && kind !== origin;
-    });
-    handleFiles(files);
-    if (misrouted.length > 0) {
-      setRouteNote((current) => `${current ? `${current} ` : ""}${misrouted.length === 1 ? `“${misrouted[0].name}” foi` : "Alguns arquivos foram"} encaminhado${misrouted.length === 1 ? "" : "s"} ao cartão do tipo correto.`);
-    }
+    handleFiles(files, origin);
   }
 
   function onDragOver(event: DragEvent<HTMLDivElement>) {
@@ -382,17 +383,17 @@ export default function ImportWorkspace() {
     setGlobalError("");
     try {
       const store = getDataStore();
-      const counts: Record<ImportKind, number> = { ecidade: 0, planilha: 0 };
+      const counts: Record<ImportKind, number> = { ecidade: 0, planilha: 0, salarial: 0 };
       const saved: ImportKind[] = [];
       for (const kind of readyKinds) {
         const slot = slots[kind];
         if (slot.status !== "ready") continue;
         const stored = { ...slot.result, schemaVersion: 1 as const, importedAt: new Date().toISOString() };
-        await store.replace(kind, stored as StoredDataset<ServidorECidade> | StoredDataset<ColaboradorPlanilha>);
+        await store.replace(kind, stored as AnyStoredDataset);
         counts[kind] = slot.result.records.length;
         saved.push(kind);
       }
-      tokens.current = { ecidade: tokens.current.ecidade + 1, planilha: tokens.current.planilha + 1 };
+      tokens.current = { ecidade: tokens.current.ecidade + 1, planilha: tokens.current.planilha + 1, salarial: tokens.current.salarial + 1 };
       setSlots(EMPTY_SLOTS);
       setRouteNote("");
       setReplaceOpen(false);
@@ -400,7 +401,7 @@ export default function ImportWorkspace() {
       await refreshExisting();
     } catch {
       setReplaceOpen(false);
-      setGlobalError("Não foi possível gravar os dados neste navegador. Verifique se o armazenamento local está liberado e tente novamente.");
+      setGlobalError(storageMode() === "supabase" ? "Não foi possível gravar os dados no Supabase. Verifique a conexão e tente novamente." : "Não foi possível gravar os dados neste navegador. Verifique se o armazenamento local está liberado e tente novamente.");
     } finally {
       setSaving(false);
     }
@@ -415,20 +416,21 @@ export default function ImportWorkspace() {
     setClearing(true);
     try {
       await getDataStore().clear();
-      setNotice("Os dados importados foram removidos deste navegador.");
+      setNotice("Os dados importados foram removidos.");
       setDone(null);
-      setExisting({ ecidade: null, planilha: null });
+      setExisting(NO_EXISTING);
       setClearOpen(false);
     } catch {
       setClearOpen(false);
-      setGlobalError("Não foi possível limpar os dados deste navegador.");
+      setGlobalError("Não foi possível limpar os dados importados.");
     } finally {
       setClearing(false);
     }
   }
 
   // Destino do botão "Ver em Funcionários": e-Cidade tem prioridade quando os dois foram importados.
-  const target = done?.kinds.includes("ecidade") ? "/employees/#ecidade" : "/employees/#planilha";
+  const target = done?.kinds.includes("planilha") && !done.kinds.includes("ecidade") && !done.kinds.includes("salarial") ? "/employees/#planilha" : "/";
+  const targetLabel = target === "/" ? "Ver painel de cargos" : "Ver em Funcionários";
 
   return (
     <div className="flex flex-col gap-8">
@@ -436,14 +438,17 @@ export default function ImportWorkspace() {
         <div className="flex max-w-2xl flex-col gap-1.5">
           <h1 className="text-2xl font-semibold tracking-tight">Importar arquivos</h1>
           <p className="text-muted-foreground">
-            Envie o CSV do e-Cidade e a planilha Excel. Pode soltar os dois de uma vez: o tipo é reconhecido pela extensão.
-            Os registros importados aparecem na tela Funcionários.
+            Envie o CSV do e-Cidade, a planilha Excel e a tabela salarial. Pode soltar todos de uma vez: o tipo é reconhecido pelo conteúdo.
+            Depois da importação, o painel de cargos é calculado automaticamente.
           </p>
         </div>
         <div className="flex max-w-sm items-start gap-3 rounded-lg border bg-card px-4 py-3 text-sm" role="note" aria-label="Privacidade">
           <ShieldCheck className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
           <p className="text-muted-foreground">
-            <strong className="font-medium text-foreground">Privacidade.</strong> Os dados ficam apenas neste navegador e não são enviados a nenhum servidor.
+            <strong className="font-medium text-foreground">Privacidade.</strong>{" "}
+            {storageMode() === "supabase"
+              ? "Os dados são gravados no Supabase e só usuários com login conseguem ver."
+              : "Os dados ficam apenas neste navegador e não são enviados a nenhum servidor."}
           </p>
         </div>
       </header>
@@ -476,7 +481,7 @@ export default function ImportWorkspace() {
         })}
       </ol>
 
-      <div className="grid gap-6 lg:grid-cols-2" onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
+      <div className="grid gap-6 lg:grid-cols-2 2xl:grid-cols-3" onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
         {KINDS.map((kind) => (
           <ImportCard
             key={kind}
@@ -525,7 +530,7 @@ export default function ImportWorkspace() {
               <p>{done.kinds.map((kind) => `${CARD[kind].title}: ${formatCount(done.counts[kind])} registros`).join("; ")}.</p>
               <div className="pt-2">
                 <Button asChild size="sm">
-                  <Link href={target}>Ver em Funcionários</Link>
+                  <Link href={target}>{targetLabel}</Link>
                 </Button>
               </div>
             </AlertDescription>
@@ -537,7 +542,7 @@ export default function ImportWorkspace() {
         <p className="text-sm text-muted-foreground">
           {readyKinds.length === 0
             ? "Selecione ao menos um arquivo para habilitar a importação."
-            : `${readyKinds.length === 1 ? "1 arquivo pronto" : "2 arquivos prontos"}. Ao importar, os registros são gravados neste navegador.`}
+            : `${readyKinds.length === 1 ? "1 arquivo pronto" : `${readyKinds.length} arquivos prontos`}. Ao importar, os registros são gravados${storageMode() === "supabase" ? " no Supabase" : " neste navegador"}.`}
         </p>
         <Button size="lg" type="button" onClick={onImportClick} disabled={readyKinds.length === 0 || saving || anyReading}>
           {saving && <Loader2 className="animate-spin" aria-hidden="true" />}
@@ -556,7 +561,7 @@ export default function ImportWorkspace() {
       <ConfirmDialog
         open={replaceOpen}
         title="Substituir dados existentes?"
-        description="Já existem dados importados destes tipos neste navegador. Eles serão substituídos pelo conteúdo dos novos arquivos."
+        description="Já existem dados importados destes tipos. Eles serão substituídos pelo conteúdo dos novos arquivos."
         confirmLabel="Substituir e importar"
         busy={saving}
         onCancel={() => setReplaceOpen(false)}
@@ -572,7 +577,7 @@ export default function ImportWorkspace() {
       <ConfirmDialog
         open={clearOpen}
         title="Limpar dados importados?"
-        description="Os dois tipos de dados (e-Cidade e Planilha) serão apagados deste navegador. Essa ação não pode ser desfeita."
+        description="Os três tipos de dados (e-Cidade, Planilha e Tabela salarial) serão apagados. O teto da folha informado é mantido. Essa ação não pode ser desfeita."
         confirmLabel="Limpar tudo"
         destructive
         busy={clearing}

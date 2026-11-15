@@ -13,10 +13,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import DataTable, { formatMoney, type Column } from "@/components/data-table";
-import { getDataStore } from "@/lib/storage";
+import { getDataStore, storageMode } from "@/lib/storage";
 import type { ColaboradorPlanilha, ImportKind, ServidorECidade, StoredDataset } from "@/lib/import";
 
-type TabKey = ImportKind;
+type TabKey = Exclude<ImportKind, "salarial">;
 
 const TABS: { key: TabKey; label: string; short: string }[] = [
   { key: "ecidade", label: "Servidores Comissionados (e-Cidade)", short: "e-Cidade" },
@@ -290,7 +290,7 @@ export default function EmployeesView() {
   function panelBody(key: TabKey) {
     if (state.status === "loading") {
       return (
-        <div className="flex flex-col gap-3" role="status" aria-label="Carregando dados deste navegador">
+        <div className="flex flex-col gap-3" role="status" aria-label="Carregando dados importados">
           <Skeleton className="h-24 w-full" />
           <Skeleton className="h-80 w-full" />
         </div>
@@ -300,7 +300,7 @@ export default function EmployeesView() {
       return (
         <Alert variant="destructive" role="alert">
           <CircleAlert aria-hidden="true" />
-          <AlertTitle>Não foi possível ler os dados deste navegador</AlertTitle>
+          <AlertTitle>Não foi possível ler os dados importados</AlertTitle>
           <AlertDescription>Recarregue a página ou importe o arquivo novamente.</AlertDescription>
         </Alert>
       );
@@ -317,7 +317,7 @@ export default function EmployeesView() {
             <p className="text-sm text-muted-foreground">Importe o arquivo correspondente para consultar os registros aqui.</p>
           </div>
           <Button asChild>
-            <Link href="/">Importar arquivos</Link>
+            <Link href="/import">Importar arquivos</Link>
           </Button>
         </div>
       );
@@ -333,7 +333,7 @@ export default function EmployeesView() {
     <div className="flex flex-col gap-8">
       <header className="flex flex-col gap-1.5">
         <h1 className="text-2xl font-semibold tracking-tight">Funcionários</h1>
-        <p className="max-w-prose text-muted-foreground">Consulte os servidores e colaboradores importados. Os dados ficam só neste navegador.</p>
+        <p className="max-w-prose text-muted-foreground">Consulte os servidores e colaboradores importados.{storageMode() === "local" ? " Os dados ficam só neste navegador." : ""}</p>
       </header>
 
       <KpiStrip state={state} />

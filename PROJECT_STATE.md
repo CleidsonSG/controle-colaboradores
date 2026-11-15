@@ -4,6 +4,17 @@
 **Pasta:** `Controle_Colaboradores`  
 **Plano:** [controle-colaboradores.md](./controle-colaboradores.md)
 
+## Painel de cargos + tabela salarial + Supabase (2026-11-15, branch `feat/frontend-design-skill`, não publicada)
+
+Ponto de retorno: branch `ponto-antes-supabase` (commit `fcd6212`), pedido do usuário caso não aprove o resultado.
+- **Rotas:** `/` = Painel de cargos (tela principal); `/import` = Importar; `/budget` = Orçamento; `/employees` = Funcionários (tela 2, sem mudança de regra: a soma da planilha de terceirizados será definida depois pelo usuário).
+- **Tabela salarial:** 3º tipo de importação (`salarial`, .csv/.xlsx/.xlsm, colunas Cargo e Salário; aliases em `lib/import/tabela-salarial.ts`). Reconhecida pelo cabeçalho (cargo + salário, sem matrícula); o cartão "Tabela salarial" força o tipo. Cargo repetido: vale o primeiro (aviso).
+- **Apuração** (`lib/folha/apuracao.ts`): conta servidores ativos (sem rescisão ou rescisão futura) por "Descrição do cargo", sem diferenciar caixa/acentos; cruza com a tabela salarial; custo = salário × servidores; saldo = teto − custo; vagas livres por cargo = ⌊saldo ÷ salário⌋ (mesmo saldo para todos). Cargos fora da tabela ficam sem custo e são listados em alerta; cargos da tabela sem servidores aparecem com 0.
+- **Teto da folha:** informado no painel e gravado em `Settings.tetoFolha` (centavos).
+- **Orçamento:** usa os dados apurados quando há e-Cidade, tabela salarial e teto; senão, valores fictícios com o motivo.
+- **Supabase com login** (autorizado em 2026-11-15): `lib/supabase/client.ts`, `lib/storage/supabase-store.ts`, `components/auth-gate.tsx`, `supabase/schema.sql`, `docs/SUPABASE.md`. Sem variáveis, usa IndexedDB (v2: stores `tabelaSalarial` e `configuracoes`).
+Validação: lint, typecheck, 64/64 testes (+11), build com e sem variáveis do Supabase; capturas do painel (claro/desktop, escuro/celular), orçamento e login com dados fictícios. **Não testado contra um Supabase real** (feito pelo usuário localmente).
+
 ## Orçamento da folha — simulação de vagas (2026-11-15, branch `feat/frontend-design-skill`)
 
 Rota `/budget` (antes "em preparação"): teto mensal editável, faixa da folha por cargo (AS 1 a AS 6), saldo, cartões por cargo (salário, ocupadas/vagas, livres, custo, botões + e −) e simulador de troca ("reduzir N vagas do cargo A para abrir vagas do cargo B", com aviso de exonerações). Regra: + só com saldo; − não reduz abaixo das ocupadas. Lógica pura em `lib/folha/simulacao.ts` (centavos), 8 testes em `tests/folha-simulacao.test.mjs`.
