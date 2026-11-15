@@ -62,7 +62,7 @@ Tipografia: **Public Sans** (fonte criada para serviços públicos), empacotada 
 └──────────────────────────────┘
 ```
 
-- Selo: `success` até 80% de ocupação, `warning` de 80% a 99%, `destructive` a partir de 100%. O estado também aparece em **texto**, nunca só em cor.
+- Selo: `success` até 80% de ocupação, `warning` de 80% a 99%, `secondary` (neutro, barra azul) a partir de 100%: cargo lotado é situação normal, não erro. `destructive` fica para folha acima do teto. O estado também aparece em **texto**, nunca só em cor.
 - Sem vaga total cadastrada: exibir "Vagas não definidas" e ação "Definir vagas".
 - Cartão inteiro é focável quando levar a detalhes, com foco visível.
 

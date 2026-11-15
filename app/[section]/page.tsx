@@ -4,7 +4,6 @@ import { Construction } from "lucide-react";
 
 const sections: Record<string, string> = {
   dashboard: "Dashboard",
-  budget: "Orçamento",
   statistics: "Estatísticas de Cargo",
   positions: "Manutenção de Cargos",
   settings: "Configurações",

@@ -4,6 +4,12 @@
 **Pasta:** `Controle_Colaboradores`  
 **Plano:** [controle-colaboradores.md](./controle-colaboradores.md)
 
+## Orçamento da folha — simulação de vagas (2026-11-15, branch `feat/frontend-design-skill`)
+
+Rota `/budget` (antes "em preparação"): teto mensal editável, faixa da folha por cargo (AS 1 a AS 6), saldo, cartões por cargo (salário, ocupadas/vagas, livres, custo, botões + e −) e simulador de troca ("reduzir N vagas do cargo A para abrir vagas do cargo B", com aviso de exonerações). Regra: + só com saldo; − não reduz abaixo das ocupadas. Lógica pura em `lib/folha/simulacao.ts` (centavos), 8 testes em `tests/folha-simulacao.test.mjs`.
+**Valores fictícios** (`FOLHA_SIMULADA`: teto R$ 100.000; AS 1 R$ 8.500 … AS 6 R$ 2.600) até o usuário informar os reais; estado só em memória (sem gravação, nenhuma nova persistência autorizada).
+Pendências: valores reais; decidir se as ocupadas vêm da planilha importada (coluna Função) e se a configuração deve ser gravada no navegador (exige autorização).
+
 ## Migração visual para Tailwind + shadcn/ui (2026-11-15, branch `feat/frontend-design-skill`, não publicada)
 
 Skill `frontend-design` (`.claude/skills/frontend-design/`) é a autoridade visual; regras em `AGENTS.md` e tokens em `docs/GUIA-VISUAL.md`. CSS manual (427 linhas) substituído por Tailwind v4 + componentes no padrão shadcn/ui em `components/ui/` (Radix via `radix-ui`, ícones `lucide-react`); `globals.css` só com tokens de tema claro/escuro. Fonte Public Sans empacotada. Telas migradas: menu lateral, Importar, Funcionários, tabela e páginas em preparação. Lógica, textos de privacidade e acessibilidade preservados (foco visível, skip link, `aria-*`, `prefers-reduced-motion`); diálogos agora usam Radix Dialog.
