@@ -62,6 +62,20 @@ function Erro({ texto }: { texto: string }) {
 
 /* ---------- Entrar ---------- */
 
+/** Mensagem clara + detalhe técnico (ajuda a diagnosticar endereço ou chave do Supabase errados). */
+function mensagemErroEntrar(mensagem: string, status?: number): string {
+  const m = mensagem.toLowerCase();
+  if (m.includes("not confirmed")) return "Confirme seu e-mail pelo link que enviamos antes de entrar.";
+  if (m.includes("invalid login credentials")) return "E-mail ou senha incorretos. Confira e tente novamente.";
+  if (m.includes("api key") || m.includes("apikey") || status === 401) {
+    return `O sistema não foi aceito pelo Supabase: confira a chave anon em .env.local. (detalhe: ${mensagem})`;
+  }
+  if (m.includes("fetch") || m.includes("network") || m.includes("load failed")) {
+    return `Não foi possível conectar ao Supabase: confira o endereço em .env.local e a internet. (detalhe: ${mensagem})`;
+  }
+  return `Não foi possível entrar agora. (detalhe: ${status ? `${status} ` : ""}${mensagem})`;
+}
+
 function FormEntrar({ onCadastrar, onEsqueci }: { onCadastrar: () => void; onEsqueci: () => void }) {
   const emailId = useId();
   const senhaId = useId();
@@ -74,17 +88,14 @@ function FormEntrar({ onCadastrar, onEsqueci }: { onCadastrar: () => void; onEsq
     event.preventDefault();
     setBusy(true);
     setErro("");
-    const { error } = await getSupabase().auth.signInWithPassword({ email: email.trim(), password: senha });
-    setBusy(false);
-    if (!error) return;
-    const m = error.message.toLowerCase();
-    setErro(
-      m.includes("not confirmed")
-        ? "Confirme seu e-mail pelo link que enviamos antes de entrar."
-        : m.includes("invalid")
-          ? "E-mail ou senha incorretos. Confira e tente novamente."
-          : "Não foi possível entrar agora. Verifique a conexão e tente novamente.",
-    );
+    try {
+      const { error } = await getSupabase().auth.signInWithPassword({ email: email.trim(), password: senha });
+      setBusy(false);
+      if (error) setErro(mensagemErroEntrar(error.message, error.status));
+    } catch (e) {
+      setBusy(false);
+      setErro(mensagemErroEntrar(e instanceof Error ? e.message : String(e)));
+    }
   }
 
   return (
