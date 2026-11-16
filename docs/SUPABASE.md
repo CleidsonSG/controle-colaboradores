@@ -13,7 +13,8 @@ Sem elas, tudo continua funcionando só no navegador (IndexedDB), sem login.
 
 Na mesma tela o administrador também:
 - muda o **perfil** (Usuário ou Administrador) de quem já está aprovado;
-- **convida** pessoas: registra o e-mail e o perfil; quem se cadastrar com esse e-mail entra **já aprovado**.
+- **convida** pessoas: registra o e-mail e o perfil; quem se cadastrar com esse e-mail é aprovado **automaticamente assim que confirmar o e-mail**
+  (até a confirmação, a conta fica pendente como qualquer outra);
   O sistema não envia o convite por e-mail: copie o link de cadastro mostrado e envie para a pessoa;
 - envia **link de nova senha** (aba Reset de senha). A pessoa também pode usar **Esqueci minha senha** na tela de entrada.
 
@@ -41,9 +42,15 @@ update public.perfis set status = 'aprovado', papel = 'admin' where email = 'ema
 
 ## 3. Cadastro e e-mails
 
-- **Authentication > Sign In / Providers**: deixe **Allow new users to sign up** **ligado** (é o que permite a tela Solicitar acesso)
-  e **Confirm email** ligado. **Confirm email é obrigatório** para os convites serem seguros: sem ele, alguém poderia se cadastrar
-  com o e-mail de um convidado e entrar aprovado.
+- **Authentication > Sign In / Providers**: deixe **Allow new users to sign up** **ligado** (é o que permite a tela Solicitar acesso).
+- **Authentication > Sign In / Providers > Email**: ligue **Confirm email** (obrigatório). Para conferir, abra
+  `https://<seu-projeto>.supabase.co/auth/v1/settings?apikey=<chave anon>` e veja `"mailer_autoconfirm": false`.
+  - O banco só aplica um convite **depois que o e-mail é confirmado pelo link enviado** (no cadastro, a conta sempre nasce pendente).
+    Com Confirm email desligado nenhum link é enviado, então convites deixam de funcionar (as contas ficam pendentes) e qualquer
+    pessoa poderia criar contas com e-mails de terceiros para enganar quem aprova.
+  - Usuário criado no painel com **Auto Confirm User** não usa convite: fica pendente (exceto na primeira execução do script, passo 2)
+    e é aprovado em **Gestão de usuários**.
+  - Recomendação ao convidado: no primeiro acesso, use **Esqueci minha senha** para definir a própria senha.
 - **Authentication > URL Configuration**:
   - **Site URL**: o endereço do site publicado (ex.: `https://cleidsonsg.github.io/controle-colaboradores/`).
   - **Redirect URLs**: adicione o endereço do site publicado com `**` no fim e também `http://localhost:3000/**` para os testes no computador.

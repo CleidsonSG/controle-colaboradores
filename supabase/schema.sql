@@ -24,9 +24,9 @@ create table if not exists public.configuracoes (
 );
 
 create or replace function public.touch_updated()
-returns trigger language plpgsql as $$
+returns trigger language plpgsql set search_path = '' as $$
 begin
-  new.updated_at := now();
+  new.updated_at := pg_catalog.now();
   new.updated_by := auth.uid();
   return new;
 end $$;
@@ -66,13 +66,15 @@ create table if not exists public.perfis (
 
 -- Funções usadas pelas regras (security definer para consultar perfis sem cair em recursão de RLS).
 create or replace function public.is_aprovado()
-returns boolean language sql stable security definer set search_path = public as $$
-  select exists (select 1 from public.perfis where user_id = auth.uid() and status = 'aprovado');
+returns boolean language sql stable security definer set search_path = '' as $$
+  select exists (select 1 from public.perfis where user_id = (select auth.uid()) and status = 'aprovado');
 $$;
 
 create or replace function public.is_admin()
-returns boolean language sql stable security definer set search_path = public as $$
-  select exists (select 1 from public.perfis where user_id = auth.uid() and status = 'aprovado' and papel = 'admin');
+returns boolean language sql stable security definer set search_path = '' as $$
+  select exists (
+    select 1 from public.perfis where user_id = (select auth.uid()) and status = 'aprovado' and papel = 'admin'
+  );
 $$;
 
 revoke all on function public.is_aprovado() from public, anon;
@@ -81,8 +83,8 @@ grant execute on function public.is_aprovado() to authenticated;
 grant execute on function public.is_admin() to authenticated;
 
 -- Convites (2026-11-16): pré-aprovação feita por um administrador. Quem se cadastrar com um e-mail convidado
--- já entra aprovado, com o perfil escolhido no convite. Exige "Confirm email" ligado no Supabase, para que só o
--- dono do e-mail consiga entrar.
+-- é aprovado, com o perfil escolhido no convite, SÓ DEPOIS de confirmar o e-mail (revisão de segurança A1).
+-- Mantenha "Confirm email" ligado no Supabase; o banco não depende só dessa opção.
 create table if not exists public.convites (
   email text primary key check (email = lower(btrim(email)) and position('@' in email) > 1),
   papel text not null default 'usuario' check (papel in ('admin', 'usuario')),
@@ -92,35 +94,76 @@ create table if not exists public.convites (
   usado_por uuid
 );
 
--- Todo novo usuário do Supabase Auth ganha um perfil: aprovado se havia convite, senão pendente.
-create or replace function public.criar_perfil_novo_usuario()
-returns trigger language plpgsql security definer set search_path = public as $$
-declare
-  convite public.convites%rowtype;
-begin
-  select * into convite from public.convites
-  where email = lower(btrim(coalesce(new.email, ''))) and usado_em is null
-  for update;
+-- Funções internas ficam no schema "private" (fora da API do Supabase; ninguém as chama pela chave pública).
+create schema if not exists private;
+revoke all on schema private from public, anon, authenticated;
 
+-- Aplica o convite de um e-mail JÁ CONFIRMADO: aprova o perfil ainda pendente com o papel do convite e marca o
+-- convite como usado. Idempotente; nunca altera perfis aprovados ou bloqueados.
+create or replace function private.aplicar_convite(p_user_id uuid, p_email text)
+returns void language plpgsql security definer set search_path = '' as $$
+declare
+  v_email text := pg_catalog.lower(pg_catalog.btrim(coalesce(p_email, '')));
+  v_papel text;
+begin
+  select c.papel into v_papel from public.convites c
+  where c.email = v_email and c.usado_em is null
+  for update;
+  if v_papel is null then
+    return;
+  end if;
+
+  update public.perfis set status = 'aprovado', papel = v_papel
+  where user_id = p_user_id and status = 'pendente';
+  if not found then
+    return;
+  end if;
+
+  update public.convites set usado_em = pg_catalog.now(), usado_por = p_user_id where email = v_email;
+end $$;
+
+revoke all on function private.aplicar_convite(uuid, text) from public, anon, authenticated;
+
+-- Todo novo usuário do Supabase Auth nasce PENDENTE. O convite só vale quando o e-mail está confirmado E houve
+-- envio de link de confirmação (confirmation_sent_at). Sem essa segunda condição, com "Confirm email" desligado o
+-- Supabase confirma o e-mail sozinho no cadastro e o convite viraria acesso para quem não é dono do e-mail.
+-- Usuário criado no painel com "Auto Confirm" também fica pendente: o administrador aprova na tela de usuários.
+create or replace function public.criar_perfil_novo_usuario()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
   insert into public.perfis (user_id, email, nome, status, papel)
   values (
     new.id,
     coalesce(new.email, ''),
-    left(coalesce(new.raw_user_meta_data ->> 'nome', ''), 120),
-    case when convite.email is not null then 'aprovado' else 'pendente' end,
-    coalesce(convite.papel, 'usuario')
+    pg_catalog.left(coalesce(new.raw_user_meta_data ->> 'nome', ''), 120),
+    'pendente',
+    'usuario'
   )
   on conflict (user_id) do nothing;
 
-  if convite.email is not null then
-    update public.convites set usado_em = now(), usado_por = new.id where email = convite.email;
+  if new.email_confirmed_at is not null and new.confirmation_sent_at is not null then
+    perform private.aplicar_convite(new.id, new.email);
   end if;
+  return new;
+end $$;
+
+create or replace function public.aplicar_convite_ao_confirmar()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  perform private.aplicar_convite(new.id, new.email);
   return new;
 end $$;
 
 drop trigger if exists ao_criar_usuario on auth.users;
 create trigger ao_criar_usuario after insert on auth.users
   for each row execute function public.criar_perfil_novo_usuario();
+
+drop trigger if exists ao_confirmar_email on auth.users;
+create trigger ao_confirmar_email after update of email_confirmed_at on auth.users
+  for each row when (
+    old.email_confirmed_at is null and new.email_confirmed_at is not null and new.confirmation_sent_at is not null
+  )
+  execute function public.aplicar_convite_ao_confirmar();
 
 -- Usuários que já existiam (criados no painel) ficam aprovados; se ainda não há administrador,
 -- o usuário mais antigo vira administrador. Rodar de novo não altera quem já tem perfil.
@@ -139,7 +182,7 @@ and not exists (select 1 from public.perfis where papel = 'admin');
 -- Só administradores alteram perfis, nunca o próprio (evita se bloquear ou perder o papel por engano).
 -- Quem altera e quando são gravados automaticamente.
 create or replace function public.proteger_perfil()
-returns trigger language plpgsql security definer set search_path = public as $$
+returns trigger language plpgsql security definer set search_path = '' as $$
 begin
   if auth.uid() is not null and new.user_id = auth.uid() then
     raise exception 'Você não pode alterar o próprio acesso.';
@@ -147,7 +190,7 @@ begin
   new.user_id := old.user_id;
   new.email := old.email;
   new.criado_em := old.criado_em;
-  new.atualizado_em := now();
+  new.atualizado_em := pg_catalog.now();
   new.atualizado_por := auth.uid();
   return new;
 end $$;
@@ -163,10 +206,10 @@ grant update (status, papel) on public.perfis to authenticated;
 
 drop policy if exists "ver o próprio perfil ou todos se admin" on public.perfis;
 create policy "ver o próprio perfil ou todos se admin" on public.perfis
-  for select to authenticated using (user_id = auth.uid() or public.is_admin());
+  for select to authenticated using (user_id = (select auth.uid()) or (select public.is_admin()));
 drop policy if exists "admin altera perfis" on public.perfis;
 create policy "admin altera perfis" on public.perfis
-  for update to authenticated using (public.is_admin()) with check (public.is_admin());
+  for update to authenticated using ((select public.is_admin())) with check ((select public.is_admin()));
 
 -- Dados importados e configurações: agora exigem usuário APROVADO (antes bastava o login).
 drop policy if exists "autenticados leem datasets" on public.datasets;
@@ -174,18 +217,18 @@ drop policy if exists "autenticados gravam datasets" on public.datasets;
 drop policy if exists "aprovados leem datasets" on public.datasets;
 drop policy if exists "aprovados gravam datasets" on public.datasets;
 create policy "aprovados leem datasets" on public.datasets
-  for select to authenticated using (public.is_aprovado());
+  for select to authenticated using ((select public.is_aprovado()));
 create policy "aprovados gravam datasets" on public.datasets
-  for all to authenticated using (public.is_aprovado()) with check (public.is_aprovado());
+  for all to authenticated using ((select public.is_aprovado())) with check ((select public.is_aprovado()));
 
 drop policy if exists "autenticados leem configuracoes" on public.configuracoes;
 drop policy if exists "autenticados gravam configuracoes" on public.configuracoes;
 drop policy if exists "aprovados leem configuracoes" on public.configuracoes;
 drop policy if exists "aprovados gravam configuracoes" on public.configuracoes;
 create policy "aprovados leem configuracoes" on public.configuracoes
-  for select to authenticated using (public.is_aprovado());
+  for select to authenticated using ((select public.is_aprovado()));
 create policy "aprovados gravam configuracoes" on public.configuracoes
-  for all to authenticated using (public.is_aprovado()) with check (public.is_aprovado());
+  for all to authenticated using ((select public.is_aprovado())) with check ((select public.is_aprovado()));
 
 -- Convites: só administradores veem, criam e cancelam.
 alter table public.convites enable row level security;
@@ -194,4 +237,4 @@ grant select, insert, delete on public.convites to authenticated;
 
 drop policy if exists "admin gerencia convites" on public.convites;
 create policy "admin gerencia convites" on public.convites
-  for all to authenticated using (public.is_admin()) with check (public.is_admin());
+  for all to authenticated using ((select public.is_admin())) with check ((select public.is_admin()));
