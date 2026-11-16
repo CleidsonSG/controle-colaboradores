@@ -1,4 +1,13 @@
-export type ImportKind = "ecidade" | "planilha";
+export type ImportKind = "ecidade" | "planilha" | "salarial";
+
+/** Linha da tabela salarial: uma função (cargo) e a remuneração mensal (em reais). */
+export type CargoSalario = {
+  cargo: string;
+  salario: number | null;
+  linha: number;
+  /** Aba de onde veio (Comissionado ou Terceirizado); ausente em CSV ou aba única. */
+  origem?: Origem;
+};
 
 export type ServidorECidade = {
   matricula: string;
@@ -59,6 +68,20 @@ export type StoredDataset<T> = ImportResult<T> & { schemaVersion: 1; importedAt:
 export interface DataStore {
   load(kind: "ecidade"): Promise<StoredDataset<ServidorECidade> | null>;
   load(kind: "planilha"): Promise<StoredDataset<ColaboradorPlanilha> | null>;
-  replace(kind: ImportKind, data: StoredDataset<ServidorECidade> | StoredDataset<ColaboradorPlanilha>): Promise<void>;
+  load(kind: "salarial"): Promise<StoredDataset<CargoSalario> | null>;
+  replace(kind: ImportKind, data: AnyStoredDataset): Promise<void>;
   clear(kind?: ImportKind): Promise<void>;
+  /** Configurações informadas pelo usuário (ex.: teto da folha). Não são apagadas por clear(). */
+  loadSettings(): Promise<Settings>;
+  saveSettings(settings: Settings): Promise<void>;
 }
+
+export type Settings = {
+  /** Teto mensal da folha em centavos; null = ainda não informado. */
+  tetoFolha: number | null;
+};
+
+export const DEFAULT_SETTINGS: Settings = { tetoFolha: null };
+
+export type AnyImportResult = ImportResult<ServidorECidade> | ImportResult<ColaboradorPlanilha> | ImportResult<CargoSalario>;
+export type AnyStoredDataset = StoredDataset<ServidorECidade> | StoredDataset<ColaboradorPlanilha> | StoredDataset<CargoSalario>;

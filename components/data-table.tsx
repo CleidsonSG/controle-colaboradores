@@ -3,6 +3,11 @@
 import { useId, useMemo, useState, type ReactNode } from "react";
 import { buildCsvBlob } from "@/lib/export-data";
 import { formatDateBr } from "@/lib/import";
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Download, Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 
 export type ColumnKind = "text" | "date" | "money";
 
@@ -112,86 +117,112 @@ export default function DataTable<T>({ caption, columns, rows, rowKey, exportFil
     URL.revokeObjectURL(url);
   }
 
+  const SortIcon = (active: "asc" | "desc" | null) => (active === "asc" ? ArrowUp : active === "desc" ? ArrowDown : ArrowUpDown);
+
   return (
-    <div className="data-table">
-      <div className="data-table-toolbar">
-        <div className="data-table-search">
-          <label htmlFor={searchId}>Buscar</label>
-          <input
-            id={searchId}
-            type="search"
-            value={query}
-            placeholder="Digite parte de qualquer valor"
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setPage(0);
-            }}
-          />
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex w-full flex-col gap-1.5 sm:max-w-sm">
+          <label className="text-sm font-medium" htmlFor={searchId}>Buscar</label>
+          <div className="relative">
+            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            <Input
+              id={searchId}
+              className="pl-9"
+              type="search"
+              value={query}
+              placeholder="Nome, matrícula, cargo…"
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setPage(0);
+              }}
+            />
+          </div>
         </div>
-        <button className="button button-outline" type="button" onClick={exportCsv} disabled={sorted.length === 0}>
-          Exportar CSV (filtrado)
-        </button>
+        <Button variant="outline" type="button" onClick={exportCsv} disabled={sorted.length === 0}>
+          <Download aria-hidden="true" />
+          Exportar CSV
+        </Button>
       </div>
-      <p className="data-table-count" role="status" aria-live="polite">
-        {sorted.length.toLocaleString("pt-BR")} de {rows.length.toLocaleString("pt-BR")} registros
+      <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
+        <span className="font-medium text-foreground tabular-nums">{sorted.length.toLocaleString("pt-BR")}</span> de{" "}
+        <span className="tabular-nums">{rows.length.toLocaleString("pt-BR")}</span> registros
       </p>
-      <div className="table-scroll data-table-scroll" tabIndex={0} role="region" aria-label={caption}>
-        <table className="data-grid">
-          <caption className="visually-hidden">{caption}</caption>
-          <thead>
-            <tr>
+      <div className="max-h-[65vh] overflow-auto rounded-lg border bg-card" tabIndex={0} role="region" aria-label={caption}>
+        <Table>
+          <caption className="sr-only">{caption}</caption>
+          <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm">
+            <TableRow className="hover:bg-transparent">
               {columns.map((column) => {
                 const active = sort?.key === column.key ? sort.direction : null;
+                const Icon = SortIcon(active);
                 return (
-                  <th
+                  <TableHead
                     key={column.key}
                     scope="col"
-                    className={column.kind === "money" ? "cell-number" : undefined}
+                    className={cn(column.kind === "money" && "text-right")}
                     aria-sort={active === "asc" ? "ascending" : active === "desc" ? "descending" : "none"}
                   >
-                    <button className="sort-button" type="button" onClick={() => toggleSort(column.key)}>
+                    <button
+                      className={cn(
+                        "-mx-1.5 inline-flex min-h-8 items-center gap-1.5 rounded-sm px-1.5 hover:text-foreground",
+                        active && "text-foreground",
+                      )}
+                      type="button"
+                      onClick={() => toggleSort(column.key)}
+                    >
                       {column.header}
-                      <span className="sort-mark" aria-hidden="true">{active === "asc" ? "▲" : active === "desc" ? "▼" : "↕"}</span>
+                      <Icon className={cn("size-3.5", !active && "opacity-50")} aria-hidden="true" />
                     </button>
-                  </th>
+                  </TableHead>
                 );
               })}
-            </tr>
-          </thead>
-          <tbody>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {visible.length === 0 ? (
-              <tr>
-                <td className="data-table-empty" colSpan={columns.length}>
+              <TableRow className="hover:bg-transparent">
+                <TableCell className="py-12 text-center text-muted-foreground" colSpan={columns.length}>
                   {emptyMessage ?? "Nenhum registro encontrado para os filtros atuais."}
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ) : (
               visible.map((row, index) => (
-                <tr key={rowKey(row, currentPage * PAGE_SIZE + index)}>
+                <TableRow key={rowKey(row, currentPage * PAGE_SIZE + index)}>
                   {columns.map((column) => {
                     const text = formatCell(column.kind, column.value(row));
                     return (
-                      <td key={column.key} className={column.kind === "money" ? "cell-number" : undefined}>
-                        {column.render ? column.render(row) : text || <span className="empty-cell">—</span>}
-                      </td>
+                      <TableCell key={column.key} className={cn(column.kind === "money" ? "text-right tabular-nums whitespace-nowrap" : column.kind === "date" && "tabular-nums whitespace-nowrap")}>
+                        {column.render ? column.render(row) : text || <span className="text-muted-foreground" aria-label="vazio">—</span>}
+                      </TableCell>
                     );
                   })}
-                </tr>
+                </TableRow>
               ))
             )}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
-      {footer && <div className="data-table-footer">{footer(sorted)}</div>}
-      <nav className="data-table-pager" aria-label={`Paginação: ${caption}`}>
-        <span>
+      {footer && <div>{footer(sorted)}</div>}
+      <nav className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" aria-label={`Paginação: ${caption}`}>
+        <span className="text-sm text-muted-foreground tabular-nums">
           {first.toLocaleString("pt-BR")}–{last.toLocaleString("pt-BR")} · Página {currentPage + 1} de {pageCount}
         </span>
-        <div>
-          <button className="button button-outline" type="button" onClick={() => setPage(0)} disabled={currentPage === 0}>Primeira</button>
-          <button className="button button-outline" type="button" onClick={() => setPage(currentPage - 1)} disabled={currentPage === 0}>Anterior</button>
-          <button className="button button-outline" type="button" onClick={() => setPage(currentPage + 1)} disabled={currentPage >= pageCount - 1}>Próxima</button>
-          <button className="button button-outline" type="button" onClick={() => setPage(pageCount - 1)} disabled={currentPage >= pageCount - 1}>Última</button>
+        <div className="flex gap-1.5">
+          <Button variant="outline" size="icon" type="button" aria-label="Primeira página" onClick={() => setPage(0)} disabled={currentPage === 0}>
+            <ChevronFirst aria-hidden="true" />
+          </Button>
+          <Button variant="outline" type="button" onClick={() => setPage(currentPage - 1)} disabled={currentPage === 0}>
+            <ChevronLeft aria-hidden="true" />
+            Anterior
+          </Button>
+          <Button variant="outline" type="button" onClick={() => setPage(currentPage + 1)} disabled={currentPage >= pageCount - 1}>
+            Próxima
+            <ChevronRight aria-hidden="true" />
+          </Button>
+          <Button variant="outline" size="icon" type="button" aria-label="Última página" onClick={() => setPage(pageCount - 1)} disabled={currentPage >= pageCount - 1}>
+            <ChevronLast aria-hidden="true" />
+          </Button>
         </div>
       </nav>
     </div>

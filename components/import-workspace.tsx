@@ -1,12 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useRef, useState, type ChangeEvent, type DragEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type DragEvent, type ReactNode } from "react";
+import { BadgeDollarSign, Check, CircleAlert, CircleCheck, FileSpreadsheet, FileText, Info, Loader2, ShieldCheck, Trash2, TriangleAlert, Upload } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 import { detectKind, importFile, ImportFileError } from "@/lib/import";
-import type { ColaboradorPlanilha, ImportKind, ImportResult, ServidorECidade, StoredDataset } from "@/lib/import";
-import { getDataStore } from "@/lib/storage";
+import type { AnyImportResult, AnyStoredDataset, ImportKind } from "@/lib/import";
+import { getDataStore, storageMode } from "@/lib/storage";
 
-type AnyResult = ImportResult<ServidorECidade> | ImportResult<ColaboradorPlanilha>;
+type AnyResult = AnyImportResult;
 
 type Slot =
   | { status: "empty" }
@@ -16,7 +23,7 @@ type Slot =
 
 type ExistingInfo = { importedAt: string; count: number } | null;
 
-const KINDS: ImportKind[] = ["ecidade", "planilha"];
+const KINDS: ImportKind[] = ["ecidade", "planilha", "salarial"];
 const CARD: Record<ImportKind, { title: string; hint: string; accept: string; types: string }> = {
   ecidade: {
     title: "Servidores Comissionados (e-Cidade)",
@@ -30,6 +37,12 @@ const CARD: Record<ImportKind, { title: string; hint: string; accept: string; ty
     accept: ".xlsx,.xlsm",
     types: ".xlsx ou .xlsm",
   },
+  salarial: {
+    title: "Tabela salarial",
+    hint: "Excel com as abas Comissionado e Terceirizado, colunas Função e Remuneração (ou Cargo e Salário), uma função por linha.",
+    accept: ".csv,.xlsx,.xlsm",
+    types: ".csv, .xlsx ou .xlsm",
+  },
 };
 const STEPS = ["Selecionar arquivos", "Conferir resumo", "Importar"] as const;
 const WARNING_LABEL: Record<string, string> = {
@@ -40,7 +53,8 @@ const WARNING_LABEL: Record<string, string> = {
   "formula-sem-valor": "Fórmulas sem valor calculado",
 };
 
-const EMPTY_SLOTS: Record<ImportKind, Slot> = { ecidade: { status: "empty" }, planilha: { status: "empty" } };
+const EMPTY_SLOTS: Record<ImportKind, Slot> = { ecidade: { status: "empty" }, planilha: { status: "empty" }, salarial: { status: "empty" } };
+const NO_EXISTING: Record<ImportKind, ExistingInfo> = { ecidade: null, planilha: null, salarial: null };
 
 function formatCount(value: number): string {
   return value.toLocaleString("pt-BR");
@@ -66,7 +80,9 @@ function getErrorMessage(error: unknown): string {
 function ConfirmDialog({
   open,
   title,
+  description,
   confirmLabel,
+  destructive,
   busy,
   onConfirm,
   onCancel,
@@ -74,46 +90,31 @@ function ConfirmDialog({
 }: {
   open: boolean;
   title: string;
+  description: string;
   confirmLabel: string;
+  destructive?: boolean;
   busy?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
-  children: ReactNode;
+  children?: ReactNode;
 }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  const titleId = useId();
-
-  useEffect(() => {
-    const dialog = ref.current;
-    if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
-  }, [open]);
-
   return (
-    <dialog ref={ref} className="confirm-dialog" aria-labelledby={titleId} onCancel={(event) => { event.preventDefault(); if (!busy) onCancel(); }}>
-      <h2 id={titleId}>{title}</h2>
-      <div className="confirm-body">{children}</div>
-      <div className="confirm-actions">
-        <button className="button button-outline" type="button" onClick={onCancel} disabled={busy} autoFocus>Cancelar</button>
-        <button className="button button-primary" type="button" onClick={onConfirm} disabled={busy}>
-          {busy && <span className="spinner spinner-light" aria-hidden="true" />}
-          {confirmLabel}
-        </button>
-      </div>
-    </dialog>
-  );
-}
-
-function CardIcon({ kind }: { kind: ImportKind }) {
-  return (
-    <span className="import-card-icon" aria-hidden="true">
-      {kind === "ecidade" ? (
-        <svg viewBox="0 0 24 24"><path d="M7 3.5h7l4 4v13H7zM14 3.5v4h4M9.5 13h5M9.5 16.5h5" /></svg>
-      ) : (
-        <svg viewBox="0 0 24 24"><rect x="4" y="4.5" width="16" height="15" rx="2" /><path d="M4 9.5h16M4 14.5h16M10 4.5v15" /></svg>
-      )}
-    </span>
+    <Dialog open={open} onOpenChange={(next) => { if (!next && !busy) onCancel(); }}>
+      <DialogContent onEscapeKeyDown={(event) => { if (busy) event.preventDefault(); }} onInteractOutside={(event) => { if (busy) event.preventDefault(); }}>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        {children && <div className="text-sm">{children}</div>}
+        <DialogFooter>
+          <Button variant="outline" type="button" onClick={onCancel} disabled={busy} autoFocus>Cancelar</Button>
+          <Button variant={destructive ? "destructive" : "default"} type="button" onClick={onConfirm} disabled={busy}>
+            {busy && <Loader2 className="animate-spin" aria-hidden="true" />}
+            {confirmLabel}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -126,35 +127,43 @@ function ReadySummary({ result }: { result: AnyResult }) {
     message: warning.message,
   }));
   return (
-    <div className="result-summary">
-      <p className="result-total">
-        <strong>{formatCount(total)}</strong>
-        <span>{total === 1 ? "registro encontrado" : "registros encontrados"}</span>
+    <div className="flex flex-col gap-4 border-t pt-4">
+      <p className="flex items-baseline gap-2">
+        <strong className="text-3xl font-semibold tracking-tight tabular-nums">{formatCount(total)}</strong>
+        <span className="text-sm text-muted-foreground">{total === 1 ? "registro encontrado" : "registros encontrados"}</span>
       </p>
       {result.countsBySheet.length > 0 && (
-        <ul className="chip-list" aria-label="Registros por aba">
+        <ul className="flex flex-wrap gap-2" aria-label="Registros por aba">
           {result.countsBySheet.map((item) => (
             <li key={item.sheet}>
-              <strong>{item.sheet}</strong>
-              {item.origem ? ` (${item.origem})` : ""}: {formatCount(item.count)}
+              <Badge variant="secondary" className="py-1 text-[0.8rem]">
+                <span className="font-semibold">{item.sheet}</span>
+                {item.origem ? ` (${item.origem})` : ""}: <span className="tabular-nums">{formatCount(item.count)}</span>
+              </Badge>
             </li>
           ))}
         </ul>
       )}
       {grouped.length > 0 ? (
-        <>
-          <p className="warnings-title">Avisos ({formatCount(grouped.length)})</p>
-          <ul className="warning-list">
+        <div className="flex flex-col gap-2">
+          <p className="text-sm font-medium">Avisos ({formatCount(grouped.length)})</p>
+          <ul className="flex flex-col gap-2">
             {grouped.map((item) => (
-              <li key={item.key}>
-                <strong>{item.label}:</strong>
-                <span>{item.message} ({formatCount(item.count)} {item.count === 1 ? "linha" : "linhas"})</span>
+              <li key={item.key} className="flex gap-2.5 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm">
+                <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
+                <span>
+                  <strong className="font-medium">{item.label}:</strong> {item.message}{" "}
+                  <span className="text-muted-foreground tabular-nums">({formatCount(item.count)} {item.count === 1 ? "linha" : "linhas"})</span>
+                </span>
               </li>
             ))}
           </ul>
-        </>
+        </div>
       ) : (
-        <p className="no-warnings">Nenhum aviso: todas as linhas foram lidas sem problemas.</p>
+        <p className="flex items-center gap-2 text-sm text-success">
+          <CircleCheck className="size-4 shrink-0" aria-hidden="true" />
+          <span>Todas as linhas foram lidas sem avisos.</span>
+        </p>
       )}
     </div>
   );
@@ -178,6 +187,7 @@ function ImportCard({
   const inputRef = useRef<HTMLInputElement>(null);
   const info = CARD[kind];
   const reading = slot.status === "reading";
+  const Icon = kind === "ecidade" ? FileText : kind === "salarial" ? BadgeDollarSign : FileSpreadsheet;
 
   function onChange(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
@@ -185,41 +195,56 @@ function ImportCard({
     if (files.length) onFiles(files);
   }
 
-  const zoneClass = `drop-zone${dragging ? " drop-zone-active" : ""}${slot.status === "ready" ? " drop-zone-ready" : ""}${slot.status === "error" ? " drop-zone-error" : ""}`;
   const when = existing ? formatWhen(existing.importedAt) : "";
 
   return (
-    <section className="import-card" aria-labelledby={`card-${kind}`}>
-      <div className="import-card-head">
-        <CardIcon kind={kind} />
-        <div>
-          <h2 id={`card-${kind}`}>{info.title}</h2>
-          <p>{info.hint} Aceita {info.types}.</p>
-        </div>
-      </div>
-
-      {existing && (
-        <p className="already-imported">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
-          <span>Já importado{when ? ` em ${when}` : ""} — {formatCount(existing.count)} registros</span>
-        </p>
-      )}
-
-      <div className={zoneClass}>
-        {reading ? (
-          <p className="status-message" role="status">
-            <span className="spinner" aria-hidden="true" /> Lendo {slot.fileName}…
+    <Card aria-labelledby={`card-${kind}`} role="region">
+      <CardHeader className="grid-cols-[auto_1fr] gap-x-4">
+        <span className="row-span-2 grid size-11 place-items-center rounded-md bg-secondary text-secondary-foreground" aria-hidden="true">
+          <Icon className="size-5" />
+        </span>
+        <CardTitle id={`card-${kind}`} role="heading" aria-level={2}>{info.title}</CardTitle>
+        <CardDescription>{info.hint} Aceita {info.types}.</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        {existing && (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Check className="size-4 shrink-0 text-success" aria-hidden="true" />
+            <span>
+              Já importado{when ? ` em ${when}` : ""}: <span className="font-medium text-foreground tabular-nums">{formatCount(existing.count)}</span> registros
+            </span>
           </p>
-        ) : (
-          <div className="drop-copy">
-            <strong>{slot.status === "ready" ? slot.result.fileName : "Arraste o arquivo para cá"}</strong>
-            <p>{slot.status === "ready" ? "Pronto para importar. Arraste outro arquivo para trocar." : "ou selecione no computador (até 25 MB)"}</p>
-          </div>
         )}
-        <div className="file-select">
+
+        <div
+          className={cn(
+            "flex flex-col items-center gap-4 rounded-lg border-2 border-dashed px-6 py-8 text-center transition-colors",
+            dragging ? "border-primary bg-secondary" : "border-input bg-muted/40",
+            slot.status === "ready" && !dragging && "border-solid border-success/40 bg-success/5",
+            slot.status === "error" && !dragging && "border-destructive/50 bg-destructive/5",
+          )}
+        >
+          {reading ? (
+            <p className="flex items-center gap-2 text-sm" role="status">
+              <Loader2 className="size-4 animate-spin text-primary" aria-hidden="true" />
+              Lendo {slot.fileName}…
+            </p>
+          ) : (
+            <div className="flex flex-col items-center gap-1">
+              {slot.status === "ready" ? (
+                <CircleCheck className="mb-1 size-6 text-success" aria-hidden="true" />
+              ) : (
+                <Upload className="mb-1 size-6 text-muted-foreground" aria-hidden="true" />
+              )}
+              <strong className="font-medium break-all">{slot.status === "ready" ? slot.result.fileName : "Arraste o arquivo para cá"}</strong>
+              <p className="text-sm text-muted-foreground">
+                {slot.status === "ready" ? "Pronto para importar. Arraste outro arquivo para trocar." : "ou selecione no computador (até 25 MB)"}
+              </p>
+            </div>
+          )}
           <input
             ref={inputRef}
-            className="file-input"
+            className="sr-only"
             id={`arquivo-${kind}`}
             type="file"
             accept={info.accept}
@@ -227,27 +252,29 @@ function ImportCard({
             onChange={onChange}
             disabled={disabled || reading}
             aria-label={`Selecionar arquivo: ${info.title}`}
+            tabIndex={-1}
           />
-          <button className="button button-outline" type="button" onClick={() => inputRef.current?.click()} disabled={disabled || reading}>
+          <Button variant="outline" type="button" onClick={() => inputRef.current?.click()} disabled={disabled || reading}>
             {slot.status === "ready" ? "Trocar arquivo" : "Selecionar arquivo"}
-          </button>
+          </Button>
         </div>
-      </div>
 
-      {slot.status === "error" && (
-        <div className="inline-alert" role="alert">
-          <span aria-hidden="true">!</span>
-          <p><strong>{slot.fileName}</strong>: {slot.message}</p>
-        </div>
-      )}
-      {slot.status === "ready" && <ReadySummary result={slot.result} />}
-    </section>
+        {slot.status === "error" && (
+          <Alert variant="destructive" role="alert">
+            <CircleAlert aria-hidden="true" />
+            <AlertTitle className="break-all">{slot.fileName}</AlertTitle>
+            <AlertDescription>{slot.message}</AlertDescription>
+          </Alert>
+        )}
+        {slot.status === "ready" && <ReadySummary result={slot.result} />}
+      </CardContent>
+    </Card>
   );
 }
 
 export default function ImportWorkspace() {
   const [slots, setSlots] = useState<Record<ImportKind, Slot>>(EMPTY_SLOTS);
-  const [existing, setExisting] = useState<Record<ImportKind, ExistingInfo>>({ ecidade: null, planilha: null });
+  const [existing, setExisting] = useState<Record<ImportKind, ExistingInfo>>(NO_EXISTING);
   const [storageError, setStorageError] = useState("");
   const [routeNote, setRouteNote] = useState("");
   const [globalError, setGlobalError] = useState("");
@@ -258,25 +285,28 @@ export default function ImportWorkspace() {
   const [clearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [notice, setNotice] = useState("");
-  const tokens = useRef<Record<ImportKind, number>>({ ecidade: 0, planilha: 0 });
+  const tokens = useRef<Record<ImportKind, number>>({ ecidade: 0, planilha: 0, salarial: 0 });
   const successRef = useRef<HTMLHeadingElement>(null);
 
   const readyKinds = KINDS.filter((kind) => slots[kind].status === "ready");
   const anyReading = KINDS.some((kind) => slots[kind].status === "reading");
   const replaceKinds = readyKinds.filter((kind) => existing[kind]);
+  // 1ª importação (nada gravado, inclusive depois de "Limpar dados importados"): os três tipos são obrigatórios.
+  // Depois, cada tipo pode ser reimportado sozinho. Vale por tipo: o que não está gravado precisa vir agora.
+  const firstImport = KINDS.every((kind) => !existing[kind]);
+  const missingKinds = KINDS.filter((kind) => !existing[kind] && slots[kind].status !== "ready");
+  const canImport = readyKinds.length > 0 && missingKinds.length === 0;
   const step = done || saving || replaceOpen ? 3 : readyKinds.length > 0 ? 2 : 1;
 
   async function refreshExisting() {
     try {
       const store = getDataStore();
-      const [ecidade, planilha] = await Promise.all([store.load("ecidade"), store.load("planilha")]);
-      setExisting({
-        ecidade: ecidade ? { importedAt: ecidade.importedAt, count: ecidade.records.length } : null,
-        planilha: planilha ? { importedAt: planilha.importedAt, count: planilha.records.length } : null,
-      });
+      const [ecidade, planilha, salarial] = await Promise.all([store.load("ecidade"), store.load("planilha"), store.load("salarial")]);
+      const info = (dataset: AnyStoredDataset | null): ExistingInfo => (dataset ? { importedAt: dataset.importedAt, count: dataset.records.length } : null);
+      setExisting({ ecidade: info(ecidade), planilha: info(planilha), salarial: info(salarial) });
       setStorageError("");
     } catch {
-      setStorageError("Não foi possível acessar o armazenamento deste navegador. A importação pode não funcionar.");
+      setStorageError(storageMode() === "supabase" ? "Não foi possível acessar o Supabase. Verifique a conexão e o script supabase/schema.sql." : "Não foi possível acessar o armazenamento deste navegador. A importação pode não funcionar.");
     }
   }
 
@@ -288,57 +318,53 @@ export default function ImportWorkspace() {
     if (done) successRef.current?.focus();
   }, [done]);
 
-  async function readInto(kind: ImportKind, file: File) {
-    const token = ++tokens.current[kind];
-    setSlots((current) => ({ ...current, [kind]: { status: "reading", fileName: file.name } }));
+  // Lê o arquivo mostrando o progresso no cartão provável; o resultado vai para o cartão do tipo reconhecido
+  // (um .csv com Cargo e Salário, por exemplo, é tabela salarial, não relatório do e-Cidade).
+  async function readFile(file: File, guess: ImportKind, forced?: ImportKind) {
+    const token = ++tokens.current[guess];
+    setSlots((current) => ({ ...current, [guess]: { status: "reading", fileName: file.name } }));
     try {
-      const result = await importFile(file);
-      if (tokens.current[kind] !== token) return;
-      setSlots((current) => ({ ...current, [kind]: { status: "ready", result } }));
+      const result = await importFile(file, forced);
+      if (tokens.current[guess] !== token) return;
+      if (result.kind === guess) {
+        setSlots((current) => ({ ...current, [guess]: { status: "ready", result } }));
+        return;
+      }
+      tokens.current[result.kind] += 1;
+      setSlots((current) => ({ ...current, [guess]: { status: "empty" }, [result.kind]: { status: "ready", result } }));
+      setRouteNote((current) => `${current ? `${current} ` : ""}“${file.name}” foi reconhecido como ${CARD[result.kind].title} e enviado para esse cartão.`);
     } catch (caught) {
-      if (tokens.current[kind] !== token) return;
-      setSlots((current) => ({ ...current, [kind]: { status: "error", fileName: file.name, message: getErrorMessage(caught) } }));
+      if (tokens.current[guess] !== token) return;
+      setSlots((current) => ({ ...current, [guess]: { status: "error", fileName: file.name, message: getErrorMessage(caught) } }));
     }
   }
 
-  function handleFiles(files: File[]) {
+  /** origin = cartão de onde veio a seleção; o cartão da tabela salarial força esse tipo. */
+  function handleFiles(files: File[], origin?: ImportKind) {
     if (files.length === 0) return;
     setDone(null);
     setNotice("");
     setGlobalError("");
     setRouteNote("");
-    const byKind: Partial<Record<ImportKind, File[]>> = {};
     const invalid: string[] = [];
     for (const file of files) {
-      const kind = detectKind(file.name);
-      if (!kind) invalid.push(file.name);
-      else (byKind[kind] ??= []).push(file);
+      const byExtension = detectKind(file.name);
+      if (!byExtension) {
+        invalid.push(file.name);
+        continue;
+      }
+      if (origin === "salarial") void readFile(file, "salarial", "salarial");
+      else void readFile(file, byExtension);
     }
     if (invalid.length > 0) {
       setGlobalError(
-        `${invalid.length === 1 ? `O arquivo “${invalid[0]}” não foi aceito` : `Estes arquivos não foram aceitos: ${invalid.join(", ")}`}. Envie um arquivo .csv (e-Cidade) ou .xlsx/.xlsm (Planilha) de até 25 MB.`,
+        `${invalid.length === 1 ? `O arquivo “${invalid[0]}” não foi aceito` : `Estes arquivos não foram aceitos: ${invalid.join(", ")}`}. Envie arquivos .csv, .xlsx ou .xlsm de até 25 MB.`,
       );
     }
-    const notes: string[] = [];
-    for (const kind of KINDS) {
-      const list = byKind[kind];
-      if (!list) continue;
-      if (list.length > 1) notes.push(`Foram enviados ${list.length} arquivos de ${CARD[kind].title}; foi usado o último.`);
-      void readInto(kind, list[list.length - 1]);
-    }
-    if (notes.length) setRouteNote(notes.join(" "));
   }
 
-  // Seleção pelo botão de um cartão: se o arquivo for do outro tipo, ele segue para o cartão certo.
   function onCardFiles(origin: ImportKind, files: File[]) {
-    const misrouted = files.filter((file) => {
-      const kind = detectKind(file.name);
-      return kind && kind !== origin;
-    });
-    handleFiles(files);
-    if (misrouted.length > 0) {
-      setRouteNote((current) => `${current ? `${current} ` : ""}${misrouted.length === 1 ? `“${misrouted[0].name}” foi` : "Alguns arquivos foram"} encaminhado${misrouted.length === 1 ? "" : "s"} ao cartão do tipo correto.`);
-    }
+    handleFiles(files, origin);
   }
 
   function onDragOver(event: DragEvent<HTMLDivElement>) {
@@ -362,17 +388,17 @@ export default function ImportWorkspace() {
     setGlobalError("");
     try {
       const store = getDataStore();
-      const counts: Record<ImportKind, number> = { ecidade: 0, planilha: 0 };
+      const counts: Record<ImportKind, number> = { ecidade: 0, planilha: 0, salarial: 0 };
       const saved: ImportKind[] = [];
       for (const kind of readyKinds) {
         const slot = slots[kind];
         if (slot.status !== "ready") continue;
         const stored = { ...slot.result, schemaVersion: 1 as const, importedAt: new Date().toISOString() };
-        await store.replace(kind, stored as StoredDataset<ServidorECidade> | StoredDataset<ColaboradorPlanilha>);
+        await store.replace(kind, stored as AnyStoredDataset);
         counts[kind] = slot.result.records.length;
         saved.push(kind);
       }
-      tokens.current = { ecidade: tokens.current.ecidade + 1, planilha: tokens.current.planilha + 1 };
+      tokens.current = { ecidade: tokens.current.ecidade + 1, planilha: tokens.current.planilha + 1, salarial: tokens.current.salarial + 1 };
       setSlots(EMPTY_SLOTS);
       setRouteNote("");
       setReplaceOpen(false);
@@ -380,13 +406,14 @@ export default function ImportWorkspace() {
       await refreshExisting();
     } catch {
       setReplaceOpen(false);
-      setGlobalError("Não foi possível gravar os dados neste navegador. Verifique se o armazenamento local está liberado e tente novamente.");
+      setGlobalError(storageMode() === "supabase" ? "Não foi possível gravar os dados no Supabase. Verifique a conexão e tente novamente." : "Não foi possível gravar os dados neste navegador. Verifique se o armazenamento local está liberado e tente novamente.");
     } finally {
       setSaving(false);
     }
   }
 
   function onImportClick() {
+    if (!canImport) return;
     if (replaceKinds.length > 0) setReplaceOpen(true);
     else void save();
   }
@@ -395,56 +422,73 @@ export default function ImportWorkspace() {
     setClearing(true);
     try {
       await getDataStore().clear();
-      setNotice("Os dados importados foram removidos deste navegador.");
+      setNotice("Os dados importados foram removidos.");
       setDone(null);
-      setExisting({ ecidade: null, planilha: null });
+      setExisting(NO_EXISTING);
       setClearOpen(false);
     } catch {
       setClearOpen(false);
-      setGlobalError("Não foi possível limpar os dados deste navegador.");
+      setGlobalError("Não foi possível limpar os dados importados.");
     } finally {
       setClearing(false);
     }
   }
 
   // Destino do botão "Ver em Funcionários": e-Cidade tem prioridade quando os dois foram importados.
-  const target = done?.kinds.includes("ecidade") ? "/employees/#ecidade" : "/employees/#planilha";
+  const target = done?.kinds.includes("planilha") && !done.kinds.includes("ecidade") && !done.kinds.includes("salarial") ? "/employees/#planilha" : "/";
+  const targetLabel = target === "/" ? "Ver painel de cargos" : "Ver em Funcionários";
 
   return (
-    <div className="import-page">
-      <header className="page-header">
-        <div className="page-header-copy">
-          <p className="eyebrow">Importar Dados</p>
-          <h1>Importar arquivos</h1>
-          <p className="intro-description">
-            Envie o CSV do e-Cidade e a planilha Excel. Você pode soltar os dois arquivos de uma vez: o tipo é reconhecido pela extensão.
-            Os registros importados são consultados na tela Funcionários.
+    <div className="flex flex-col gap-8">
+      <header className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex max-w-2xl flex-col gap-1.5">
+          <h1 className="text-2xl font-semibold tracking-tight">Importar arquivos</h1>
+          <p className="text-muted-foreground">
+            Envie o CSV do e-Cidade, a planilha Excel e a tabela salarial. Pode soltar todos de uma vez: o tipo é reconhecido pelo conteúdo.
+            Na primeira importação os três são obrigatórios; depois, cada um pode ser reimportado sozinho.
+            Depois da importação, o painel de cargos é calculado automaticamente.
           </p>
         </div>
-        <aside className="privacy-note" aria-label="Privacidade">
-          <span className="privacy-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none"><path d="M12 3.5 5 6v5.5c0 4 2.7 7 7 9 4.3-2 7-5 7-9V6z" /><path d="m9 12 2 2 4-4" /></svg>
-          </span>
-          <div>
-            <strong>Privacidade</strong>
-            <p>Os dados ficam apenas neste navegador e não são enviados a nenhum servidor.</p>
-          </div>
-        </aside>
+        <div className="flex max-w-sm items-start gap-3 rounded-lg border bg-card px-4 py-3 text-sm" role="note" aria-label="Privacidade">
+          <ShieldCheck className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
+          <p className="text-muted-foreground">
+            <strong className="font-medium text-foreground">Privacidade.</strong>{" "}
+            {storageMode() === "supabase"
+              ? "Os dados são gravados no Supabase e só usuários com login conseguem ver."
+              : "Os dados ficam apenas neste navegador e não são enviados a nenhum servidor."}
+          </p>
+        </div>
       </header>
 
-      <ol className="workflow-steps" aria-label="Etapas da importação">
+      <ol className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-0" aria-label="Etapas da importação">
         {STEPS.map((label, index) => {
           const number = index + 1;
-          const state = step === number ? " workflow-step-active" : step > number ? " workflow-step-done" : "";
+          const isActive = step === number;
+          const isDone = step > number;
           return (
-            <li key={label} className={`workflow-step${state}`} aria-current={step === number ? "step" : undefined}>
-              <span aria-hidden="true">{step > number ? "✓" : number}</span> {label}
+            <li
+              key={label}
+              className={cn("flex items-center gap-2.5 text-sm sm:flex-1", isActive ? "font-medium text-foreground" : "text-muted-foreground")}
+              aria-current={isActive ? "step" : undefined}
+            >
+              <span
+                className={cn(
+                  "grid size-7 shrink-0 place-items-center rounded-full border text-xs font-semibold tabular-nums",
+                  isActive && "border-primary bg-primary text-primary-foreground",
+                  isDone && "border-success bg-success/10 text-success",
+                )}
+                aria-hidden="true"
+              >
+                {isDone ? <Check className="size-3.5" strokeWidth={3} /> : number}
+              </span>
+              <span>{label}{isDone && <span className="sr-only"> (concluída)</span>}</span>
+              {index < STEPS.length - 1 && <span className="mx-4 hidden h-px flex-1 bg-border sm:block" aria-hidden="true" />}
             </li>
           );
         })}
       </ol>
 
-      <div className="import-grid" onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
+      <div className="grid gap-6 lg:grid-cols-2 2xl:grid-cols-3" onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
         {KINDS.map((kind) => (
           <ImportCard
             key={kind}
@@ -458,64 +502,81 @@ export default function ImportWorkspace() {
         ))}
       </div>
 
-      <div className="import-feedback">
-        {routeNote && <p className="status-message" role="status">{routeNote}</p>}
+      <div className="flex flex-col gap-3 empty:hidden">
+        {routeNote && (
+          <Alert variant="info" role="status">
+            <Info aria-hidden="true" />
+            <AlertDescription className="text-foreground">{routeNote}</AlertDescription>
+          </Alert>
+        )}
         {globalError && (
-          <div className="inline-alert" role="alert">
-            <span aria-hidden="true">!</span>
-            <p>{globalError}</p>
-          </div>
+          <Alert variant="destructive" role="alert">
+            <CircleAlert aria-hidden="true" />
+            <AlertDescription className="text-foreground">{globalError}</AlertDescription>
+          </Alert>
         )}
         {storageError && (
-          <div className="inline-alert" role="alert">
-            <span aria-hidden="true">!</span>
-            <p>{storageError}</p>
-          </div>
+          <Alert variant="destructive" role="alert">
+            <CircleAlert aria-hidden="true" />
+            <AlertDescription className="text-foreground">{storageError}</AlertDescription>
+          </Alert>
         )}
-        {notice && <p className="status-message notice-message" role="status">{notice}</p>}
+        {notice && (
+          <Alert role="status">
+            <Info aria-hidden="true" />
+            <AlertDescription className="text-foreground">{notice}</AlertDescription>
+          </Alert>
+        )}
         {done && (
-          <div className="inline-alert inline-alert-success" role="status">
-            <span aria-hidden="true">✓</span>
-            <div>
-              <h2 className="alert-title" tabIndex={-1} ref={successRef}>Importação concluída</h2>
-              <p>
-                {done.kinds.map((kind) => `${CARD[kind].title}: ${formatCount(done.counts[kind])} registros`).join(" · ")}.
-              </p>
-              <div className="success-actions">
-                <Link className="button button-primary button-sm" href={target}>Ver em Funcionários</Link>
+          <Alert variant="success" role="status">
+            <CircleCheck aria-hidden="true" />
+            <AlertTitle>
+              <h2 className="outline-none" tabIndex={-1} ref={successRef}>Importação concluída</h2>
+            </AlertTitle>
+            <AlertDescription>
+              <p>{done.kinds.map((kind) => `${CARD[kind].title}: ${formatCount(done.counts[kind])} registros`).join("; ")}.</p>
+              <div className="pt-2">
+                <Button asChild size="sm">
+                  <Link href={target}>{targetLabel}</Link>
+                </Button>
               </div>
-            </div>
-          </div>
+            </AlertDescription>
+          </Alert>
         )}
       </div>
 
-      <div className="import-actions">
-        <p>
-          {readyKinds.length === 0
-            ? "Selecione ao menos um arquivo para habilitar a importação."
-            : `${readyKinds.length === 1 ? "1 arquivo pronto" : "2 arquivos prontos"}. Ao importar, os registros são gravados neste navegador.`}
+      <div className="flex flex-col gap-4 rounded-lg border bg-card p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+        <p className="text-sm text-muted-foreground">
+          {missingKinds.length > 0
+            ? `${firstImport ? "Primeira importação: envie os três arquivos." : "Ainda não há dados de todos os tipos."} Falta${missingKinds.length > 1 ? "m" : ""}: ${missingKinds.map((kind) => CARD[kind].title).join(", ")}.`
+            : readyKinds.length === 0
+              ? "Selecione um ou mais arquivos para reimportar. Cada tipo pode ser importado sozinho."
+              : `${readyKinds.length === 1 ? "1 arquivo pronto" : `${readyKinds.length} arquivos prontos`}. Ao importar, os registros são gravados${storageMode() === "supabase" ? " no Supabase" : " neste navegador"}.`}
         </p>
-        <button className="button button-primary" type="button" onClick={onImportClick} disabled={readyKinds.length === 0 || saving || anyReading}>
-          {saving && <span className="spinner spinner-light" aria-hidden="true" />}
+        <Button size="lg" type="button" onClick={onImportClick} disabled={!canImport || saving || anyReading}>
+          {saving && <Loader2 className="animate-spin" aria-hidden="true" />}
           Importar arquivos
-        </button>
+        </Button>
       </div>
 
-      <div className="panel-footer">
-        <p>Nenhum dado de pessoa é exibido nesta tela.</p>
-        <button className="text-button" type="button" onClick={() => setClearOpen(true)}>Limpar dados importados</button>
+      <div className="flex flex-col gap-2 border-t pt-5 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+        <p>Esta tela mostra só o resumo da importação, sem dados de pessoas.</p>
+        <Button variant="ghost" className="self-start text-destructive hover:bg-destructive/10 hover:text-destructive sm:self-auto" type="button" onClick={() => setClearOpen(true)}>
+          <Trash2 aria-hidden="true" />
+          Limpar dados importados
+        </Button>
       </div>
 
       <ConfirmDialog
         open={replaceOpen}
         title="Substituir dados existentes?"
+        description="Já existem dados importados destes tipos. Eles serão substituídos pelo conteúdo dos novos arquivos."
         confirmLabel="Substituir e importar"
         busy={saving}
         onCancel={() => setReplaceOpen(false)}
         onConfirm={() => void save()}
       >
-        <p>Já existem dados importados destes tipos neste navegador. Eles serão substituídos pelo conteúdo dos novos arquivos:</p>
-        <ul>
+        <ul className="list-disc pl-5">
           {replaceKinds.map((kind) => (
             <li key={kind}>{CARD[kind].title}</li>
           ))}
@@ -525,13 +586,13 @@ export default function ImportWorkspace() {
       <ConfirmDialog
         open={clearOpen}
         title="Limpar dados importados?"
+        description="Os três tipos de dados (e-Cidade, Planilha e Tabela salarial) serão apagados. O teto da folha informado é mantido. Essa ação não pode ser desfeita."
         confirmLabel="Limpar tudo"
+        destructive
         busy={clearing}
         onCancel={() => setClearOpen(false)}
         onConfirm={() => void onClear()}
-      >
-        <p>Os dois tipos de dados (e-Cidade e Planilha) serão apagados deste navegador. Essa ação não pode ser desfeita.</p>
-      </ConfirmDialog>
+      />
     </div>
   );
 }

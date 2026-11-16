@@ -1,16 +1,26 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { CircleAlert, FileSpreadsheet, TriangleAlert, Upload } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 import DataTable, { formatMoney, type Column } from "@/components/data-table";
-import { getDataStore } from "@/lib/storage";
+import { getDataStore, storageMode } from "@/lib/storage";
 import type { ColaboradorPlanilha, ImportKind, ServidorECidade, StoredDataset } from "@/lib/import";
 
-type TabKey = ImportKind;
+type TabKey = Exclude<ImportKind, "salarial">;
 
-const TABS: { key: TabKey; label: string }[] = [
-  { key: "ecidade", label: "Servidores Comissionados (e-Cidade)" },
-  { key: "planilha", label: "Terceirizados e Comissionados (Planilha)" },
+const TABS: { key: TabKey; label: string; short: string }[] = [
+  { key: "ecidade", label: "Servidores Comissionados (e-Cidade)", short: "e-Cidade" },
+  { key: "planilha", label: "Terceirizados e Comissionados (Planilha)", short: "Planilha" },
 ];
 
 export const ECIDADE_COLUMNS: Column<ServidorECidade>[] = [
@@ -28,9 +38,14 @@ export const PLANILHA_COLUMNS: Column<ColaboradorPlanilha>[] = [
     header: "Matrícula",
     value: (row) => row.matricula,
     render: (row) => (
-      <span className="matricula-cell">
-        {row.matricula || <span className="empty-cell">—</span>}
-        {row.possivelDuplicidade && <span className="badge badge-warning">Possível duplicidade</span>}
+      <span className="flex flex-wrap items-center gap-2 tabular-nums">
+        {row.matricula || <span className="text-muted-foreground">—</span>}
+        {row.possivelDuplicidade && (
+          <Badge variant="warning">
+            <TriangleAlert aria-hidden="true" />
+            Possível duplicidade
+          </Badge>
+        )}
       </span>
     ),
   },
@@ -58,26 +73,35 @@ function formatImportedAt(iso: string): string {
 }
 
 function FilterSelect({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
+  const id = useId();
   return (
-    <label className="filter-field">
-      <span>{label}</span>
-      <select className="form-select" value={value} onChange={(event) => onChange(event.target.value)}>
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <label className="text-sm font-medium" htmlFor={id}>{label}</label>
+      <NativeSelect id={id} value={value} onChange={(event) => onChange(event.target.value)}>
         <option value="">Todos</option>
         {options.map((option) => (
           <option key={option} value={option}>{option}</option>
         ))}
-      </select>
-    </label>
+      </NativeSelect>
+    </div>
   );
 }
 
 function ImportInfo({ dataset }: { dataset: StoredDataset<unknown> }) {
   const when = formatImportedAt(dataset.importedAt);
   return (
-    <p className="import-info">
-      Arquivo <strong>{dataset.fileName}</strong>{when ? <> importado em {when}</> : null}. Os dados ficam apenas neste navegador.
+    <p className="flex items-center gap-2 text-sm text-muted-foreground">
+      <FileSpreadsheet className="size-4 shrink-0" aria-hidden="true" />
+      <span>
+        <span className="font-medium text-foreground">{dataset.fileName}</span>
+        {when ? <>, importado em {when}</> : null}
+      </span>
     </p>
   );
+}
+
+function FilterBar({ children }: { children: ReactNode }) {
+  return <div className="grid gap-4 rounded-lg border bg-card p-4 sm:grid-cols-2 lg:grid-cols-3">{children}</div>;
 }
 
 function ECidadePanel({ dataset }: { dataset: StoredDataset<ServidorECidade> }) {
@@ -98,14 +122,16 @@ function ECidadePanel({ dataset }: { dataset: StoredDataset<ServidorECidade> }) 
   return (
     <>
       <ImportInfo dataset={dataset} />
-      <div className="filter-bar">
-        <label className="filter-check">
-          <input type="checkbox" checked={onlyComissionados} onChange={(event) => setOnlyComissionados(event.target.checked)} />
-          <span>Somente comissionados (282/16)</span>
-        </label>
+      <FilterBar>
         <FilterSelect label="Lotação" value={lotacao} options={lotacoes} onChange={setLotacao} />
         <FilterSelect label="Cargo" value={cargo} options={cargos} onChange={setCargo} />
-      </div>
+        <div className="flex items-end">
+          <Label className="min-h-10 cursor-pointer font-normal">
+            <Checkbox checked={onlyComissionados} onCheckedChange={(checked) => setOnlyComissionados(checked === true)} />
+            Somente comissionados (282/16)
+          </Label>
+        </div>
+      </FilterBar>
       <DataTable
         caption="Servidores Comissionados (e-Cidade)"
         columns={ECIDADE_COLUMNS}
@@ -136,11 +162,11 @@ function PlanilhaPanel({ dataset }: { dataset: StoredDataset<ColaboradorPlanilha
   return (
     <>
       <ImportInfo dataset={dataset} />
-      <div className="filter-bar">
+      <FilterBar>
         <FilterSelect label="Empresa/Secretaria" value={empresa} options={empresas} onChange={setEmpresa} />
         <FilterSelect label="Função" value={funcao} options={funcoes} onChange={setFuncao} />
         <FilterSelect label="Origem" value={origem} options={origens} onChange={setOrigem} />
-      </div>
+      </FilterBar>
       <DataTable
         caption="Terceirizados e Comissionados (Planilha)"
         columns={PLANILHA_COLUMNS}
@@ -151,9 +177,15 @@ function PlanilhaPanel({ dataset }: { dataset: StoredDataset<ColaboradorPlanilha
           const remuneracao = visible.reduce((sum, row) => sum + (row.remuneracao ?? 0), 0);
           const alimentacao = visible.reduce((sum, row) => sum + (row.alimentacao ?? 0), 0);
           return (
-            <dl className="sum-list">
-              <div><dt>Soma de Remuneração</dt><dd>{formatMoney(remuneracao)}</dd></div>
-              <div><dt>Soma de Alimentação</dt><dd>{formatMoney(alimentacao)}</dd></div>
+            <dl className="flex flex-wrap justify-end gap-x-8 gap-y-2 text-sm">
+              <div className="flex items-baseline gap-2">
+                <dt className="text-muted-foreground">Soma de remuneração</dt>
+                <dd className="font-semibold tabular-nums">{formatMoney(remuneracao)}</dd>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <dt className="text-muted-foreground">Soma de alimentação</dt>
+                <dd className="font-semibold tabular-nums">{formatMoney(alimentacao)}</dd>
+              </div>
             </dl>
           );
         }}
@@ -167,14 +199,31 @@ type LoadState =
   | { status: "error" }
   | { status: "ready"; ecidade: StoredDataset<ServidorECidade> | null; planilha: StoredDataset<ColaboradorPlanilha> | null };
 
+function Kpi({ label, value, note, wide, money }: { label: string; value: string; note?: string; wide?: boolean; money?: boolean }) {
+  return (
+    <div className={cn("flex flex-col gap-1 p-4 sm:px-6 sm:py-5", wide && "col-span-2 lg:col-span-1")}>
+      <dt className="text-sm text-muted-foreground">{label}</dt>
+      <dd className="flex flex-col gap-1">
+        <span className={cn("font-semibold tracking-tight tabular-nums", money ? "text-2xl" : "text-2xl sm:text-3xl")}>{value}</span>
+        {note && <span className="text-sm text-muted-foreground tabular-nums">{note}</span>}
+      </dd>
+    </div>
+  );
+}
+
+const KPI_GRID = "grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border lg:grid-cols-4 [&>*]:bg-card";
+
 function KpiStrip({ state }: { state: LoadState }) {
   if (state.status === "loading") {
     return (
-      <dl className="kpi-strip" aria-busy="true" aria-label="Indicadores">
+      <div className={KPI_GRID} aria-busy="true" aria-label="Carregando indicadores">
         {["a", "b", "c", "d"].map((key) => (
-          <div className="kpi kpi-skeleton" key={key}><dt>Carregando…</dt><dd aria-hidden="true" /></div>
+          <div className="flex flex-col gap-3 px-6 py-5" key={key}>
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-8 w-24" />
+          </div>
         ))}
-      </dl>
+      </div>
     );
   }
   if (state.status === "error") return null;
@@ -187,26 +236,16 @@ function KpiStrip({ state }: { state: LoadState }) {
   const remuneracao = registros.reduce((sum, row) => sum + (row.remuneracao ?? 0), 0);
   const dash = "—";
   return (
-    <dl className="kpi-strip" aria-label="Indicadores dos dados importados">
-      <div className="kpi">
-        <dt>Servidores e-Cidade</dt>
-        <dd>{ecidade ? formatInt(servidores.length) : dash}</dd>
-      </div>
-      <div className="kpi">
-        <dt>Comissionados (282/16)</dt>
-        <dd>{ecidade ? formatInt(comissionadosEcidade) : dash}</dd>
-      </div>
-      <div className="kpi">
-        <dt>Registros da planilha</dt>
-        <dd>
-          {planilha ? formatInt(registros.length) : dash}
-          {planilha && <span className="kpi-note">{formatInt(comissionadosPlanilha)} comissionados · {formatInt(terceirizados)} terceirizados</span>}
-        </dd>
-      </div>
-      <div className="kpi">
-        <dt>Soma de remuneração</dt>
-        <dd>{planilha ? formatMoney(remuneracao) : dash}</dd>
-      </div>
+    <dl className={KPI_GRID} aria-label="Indicadores dos dados importados">
+      <Kpi label="Servidores no e-Cidade" value={ecidade ? formatInt(servidores.length) : dash} />
+      <Kpi label="Comissionados (282/16)" value={ecidade ? formatInt(comissionadosEcidade) : dash} />
+      <Kpi
+        wide
+        label="Registros da planilha"
+        value={planilha ? formatInt(registros.length) : dash}
+        note={planilha ? `${formatInt(comissionadosPlanilha)} comissionados, ${formatInt(terceirizados)} terceirizados` : undefined}
+      />
+      <Kpi wide money label="Soma de remuneração" value={planilha ? formatMoney(remuneracao) : dash} />
     </dl>
   );
 }
@@ -218,7 +257,6 @@ function formatInt(value: number): string {
 export default function EmployeesView() {
   const [tab, setTab] = useState<TabKey>("ecidade");
   const [state, setState] = useState<LoadState>({ status: "loading" });
-  const tabRefs = useRef<Record<TabKey, HTMLButtonElement | null>>({ ecidade: null, planilha: null });
 
   useEffect(() => {
     const syncHash = () => setTab(hashToTab(window.location.hash));
@@ -243,82 +281,78 @@ export default function EmployeesView() {
     };
   }, []);
 
-  function selectTab(key: TabKey, focus = false) {
+  function selectTab(value: string) {
+    const key = hashToTab(value);
     setTab(key);
     window.history.replaceState(null, "", `#${key}`);
-    if (focus) tabRefs.current[key]?.focus();
   }
 
-  function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
-    const index = TABS.findIndex((item) => item.key === tab);
-    let next = -1;
-    if (event.key === "ArrowRight") next = (index + 1) % TABS.length;
-    else if (event.key === "ArrowLeft") next = (index - 1 + TABS.length) % TABS.length;
-    else if (event.key === "Home") next = 0;
-    else if (event.key === "End") next = TABS.length - 1;
-    if (next < 0) return;
-    event.preventDefault();
-    selectTab(TABS[next].key, true);
+  function panelBody(key: TabKey) {
+    if (state.status === "loading") {
+      return (
+        <div className="flex flex-col gap-3" role="status" aria-label="Carregando dados importados">
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-80 w-full" />
+        </div>
+      );
+    }
+    if (state.status === "error") {
+      return (
+        <Alert variant="destructive" role="alert">
+          <CircleAlert aria-hidden="true" />
+          <AlertTitle>Não foi possível ler os dados importados</AlertTitle>
+          <AlertDescription>Recarregue a página ou importe o arquivo novamente.</AlertDescription>
+        </Alert>
+      );
+    }
+    const dataset = state[key];
+    if (!dataset) {
+      return (
+        <div className="flex flex-col items-center gap-4 rounded-lg border border-dashed bg-card px-6 py-14 text-center">
+          <span className="grid size-12 place-items-center rounded-full bg-secondary text-secondary-foreground">
+            <Upload className="size-5" aria-hidden="true" />
+          </span>
+          <div className="flex max-w-sm flex-col gap-1">
+            <p className="font-medium">Nenhum dado importado nesta aba</p>
+            <p className="text-sm text-muted-foreground">Importe o arquivo correspondente para consultar os registros aqui.</p>
+          </div>
+          <Button asChild>
+            <Link href="/import">Importar arquivos</Link>
+          </Button>
+        </div>
+      );
+    }
+    return key === "ecidade" ? (
+      <ECidadePanel dataset={dataset as StoredDataset<ServidorECidade>} />
+    ) : (
+      <PlanilhaPanel dataset={dataset as StoredDataset<ColaboradorPlanilha>} />
+    );
   }
-
-  const dataset = state.status === "ready" ? state[tab] : null;
 
   return (
-    <div className="employees-page">
-      <header className="page-header">
-        <div className="page-header-copy">
-          <p className="eyebrow">Gestão de pessoas</p>
-          <h1>Funcionários</h1>
-          <p className="intro-description">Consulte os dados importados. Tudo fica apenas neste navegador.</p>
-        </div>
+    <div className="flex flex-col gap-8">
+      <header className="flex flex-col gap-1.5">
+        <h1 className="text-2xl font-semibold tracking-tight">Funcionários</h1>
+        <p className="max-w-prose text-muted-foreground">Consulte os servidores e colaboradores importados.{storageMode() === "local" ? " Os dados ficam só neste navegador." : ""}</p>
       </header>
 
       <KpiStrip state={state} />
 
-      <div className="tab-list" role="tablist" aria-label="Fontes de dados">
+      <Tabs value={tab} onValueChange={selectTab}>
+        <TabsList aria-label="Fontes de dados">
+          {TABS.map((item) => (
+            <TabsTrigger key={item.key} value={item.key}>
+              <span className="sm:hidden">{item.short}</span>
+              <span className="hidden sm:inline">{item.label}</span>
+            </TabsTrigger>
+          ))}
+        </TabsList>
         {TABS.map((item) => (
-          <button
-            key={item.key}
-            ref={(element) => {
-              tabRefs.current[item.key] = element;
-            }}
-            id={`tab-${item.key}`}
-            className={`tab-button${tab === item.key ? " tab-button-active" : ""}`}
-            type="button"
-            role="tab"
-            aria-selected={tab === item.key}
-            aria-controls={`panel-${item.key}`}
-            tabIndex={tab === item.key ? 0 : -1}
-            onClick={() => selectTab(item.key)}
-            onKeyDown={onTabKeyDown}
-          >
-            {item.label}
-          </button>
+          <TabsContent key={item.key} value={item.key}>
+            {panelBody(item.key)}
+          </TabsContent>
         ))}
-      </div>
-
-      <section className="tab-panel" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
-        {state.status === "loading" && (
-          <p className="status-message tab-status" role="status">
-            <span className="spinner" aria-hidden="true" /> Carregando dados deste navegador…
-          </p>
-        )}
-        {state.status === "error" && (
-          <div className="inline-alert tab-status" role="alert">
-            <span aria-hidden="true">!</span>
-            <p>Não foi possível ler os dados armazenados neste navegador. Recarregue a página ou importe o arquivo novamente.</p>
-          </div>
-        )}
-        {state.status === "ready" && !dataset && (
-          <div className="empty-state">
-            <strong>Nenhum dado importado nesta aba.</strong>
-            <p>Importe o arquivo correspondente para consultar os registros aqui.</p>
-            <Link className="button button-primary" href="/">Importar Dados</Link>
-          </div>
-        )}
-        {state.status === "ready" && dataset && tab === "ecidade" && <ECidadePanel dataset={dataset as StoredDataset<ServidorECidade>} />}
-        {state.status === "ready" && dataset && tab === "planilha" && <PlanilhaPanel dataset={dataset as StoredDataset<ColaboradorPlanilha>} />}
-      </section>
+      </Tabs>
     </div>
   );
 }

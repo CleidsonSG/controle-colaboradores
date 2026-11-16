@@ -1,12 +1,15 @@
-import type { ColaboradorPlanilha, DataStore, ImportKind, ServidorECidade, StoredDataset } from "../import/types.ts";
+import { DEFAULT_SETTINGS, type CargoSalario, type ColaboradorPlanilha, type DataStore, type ImportKind, type ServidorECidade, type Settings, type StoredDataset } from "../import/types.ts";
 
 const DB_NAME = "controle-colaboradores";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const DATASET_KEY = "dataset";
 const STORE_BY_KIND: Record<ImportKind, string> = {
   ecidade: "servidoresComissionadosECidade",
   planilha: "colaboradoresTerceirizadosFusao",
+  salarial: "tabelaSalarial",
 };
+const SETTINGS_STORE = "configuracoes";
+const SETTINGS_KEY = "geral";
 const KINDS = Object.keys(STORE_BY_KIND) as ImportKind[];
 
 function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
@@ -37,6 +40,7 @@ export function createIndexedDbStore(): DataStore {
             request.result.createObjectStore(STORE_BY_KIND[kind]);
           }
         }
+        if (!request.result.objectStoreNames.contains(SETTINGS_STORE)) request.result.createObjectStore(SETTINGS_STORE);
       };
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => {
@@ -49,6 +53,7 @@ export function createIndexedDbStore(): DataStore {
 
   function load(kind: "ecidade"): Promise<StoredDataset<ServidorECidade> | null>;
   function load(kind: "planilha"): Promise<StoredDataset<ColaboradorPlanilha> | null>;
+  function load(kind: "salarial"): Promise<StoredDataset<CargoSalario> | null>;
   async function load(kind: ImportKind): Promise<unknown> {
     const db = await openDb();
     const store = db.transaction(STORE_BY_KIND[kind], "readonly").objectStore(STORE_BY_KIND[kind]);
@@ -70,6 +75,18 @@ export function createIndexedDbStore(): DataStore {
       const names = (kind ? [kind] : KINDS).map((item) => STORE_BY_KIND[item]);
       const transaction = db.transaction(names, "readwrite");
       for (const name of names) transaction.objectStore(name).clear();
+      await transactionDone(transaction);
+    },
+    async loadSettings() {
+      const db = await openDb();
+      const store = db.transaction(SETTINGS_STORE, "readonly").objectStore(SETTINGS_STORE);
+      const saved = (await requestToPromise(store.get(SETTINGS_KEY))) as Partial<Settings> | undefined;
+      return { ...DEFAULT_SETTINGS, ...(saved ?? {}) };
+    },
+    async saveSettings(settings) {
+      const db = await openDb();
+      const transaction = db.transaction(SETTINGS_STORE, "readwrite");
+      transaction.objectStore(SETTINGS_STORE).put(settings, SETTINGS_KEY);
       await transactionDone(transaction);
     },
   };

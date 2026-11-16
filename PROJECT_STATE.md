@@ -1,8 +1,71 @@
 # Estado do projeto — Controle de Colaboradores
 
-**Atualizado em:** 2026-11-13  
+**Atualizado em:** 2026-11-12  
 **Pasta:** `Controle_Colaboradores`  
 **Plano:** [controle-colaboradores.md](./controle-colaboradores.md)
+
+## Retomada no computador local (2026-11-16) — LEIA PRIMEIRO
+
+Todo o trabalho desta etapa está na branch `feat/frontend-design-skill` (não publicada; `main` intacta). Ponto de retorno: branch `ponto-antes-supabase`.
+
+**Supabase real conectado (2026-11-16, fim do dia):** projeto `epvrdpnftxkhxndhamar` (o `.env.local` chegou a misturar URL e chave de projetos diferentes; corrigido pelo usuário). Tabelas e RLS já existem nele (anon recebe 42501). Login do dono funcionou; entrou como pendente e foi orientado a se promover a admin pelo SQL Editor. Itens 1 e 2 abaixo: na prática resolvidos; confirmar admin na próxima sessão.
+
+**Tabela salarial com duas abas (2026-11-16, commit local, não publicado):** `lib/import/tabela-salarial.ts` lê todas as abas com Função/Remuneração (ou Cargo/Salário); a origem vem do nome da aba (Comissionado/Terceirizado; senão, 1ª/2ª posição) e fica em `CargoSalario.origem`. A apuração do e-Cidade (`lib/folha/apuracao.ts`) ignora a aba Terceirizado (a mesma função tem valores diferentes nas duas abas). **Pendente:** decidir onde a remuneração dos terceirizados deve ser usada (hoje só é guardada) e o usuário reimportar a tabela salarial.
+
+**Diagnóstico de 2026-11-16 (causa encontrada):** o `.env.local` deste computador é cópia idêntica do `.env.example` (mesmo tamanho e horário): URL `https://SEU-PROJETO.supabase.co` e chave `sua-chave...`. Esse endereço não existe (DNS responde "nome não existe"), por isso dá "Failed to fetch". A rede está normal: sem proxy, arquivo hosts limpo, `supabase.co` responde HTTP 200 por HTTPS. Correção: preencher o `.env.local` com a Project URL e a chave `anon` reais e reiniciar o `npm run dev`.
+
+**Bloqueio anterior (hipótese descartada):** no computador do usuário, o login falha com "Failed to fetch". O `.env.local` está correto (um celular acessa o projeto Supabase normalmente), mas o navegador do computador não abre `https://<projeto>.supabase.co/auth/v1/health` ("Não é possível acessar esse site"). Causa provável: rede corporativa (IP 10.19.x.x) ou DNS/proxy/antivírus da máquina. Diagnosticar com `nslookup` (DNS padrão e 1.1.1.1), `Test-NetConnection -Port 443`, `netsh winhttp show proxy`, arquivo hosts e `ipconfig /flushdns`; testar também com o computador no roteador do celular. Propor a correção ao usuário antes de alterar configurações. Enquanto isso, renomear `.env.local` faz o sistema rodar sem login (IndexedDB).
+
+**Ainda não verificado contra o Supabase real** (só em PostgreSQL local simulado e com respostas simuladas):
+1. Se `supabase/schema.sql` (versão atual, com `perfis` e `convites`) foi executado no SQL Editor.
+2. Se o usuário do dono existe em Authentication > Users e virou administrador (ver `docs/SUPABASE.md`).
+3. Supabase Auth: "Allow new users to sign up" e "Confirm email" ligados; Redirect URLs com o site publicado (`https://cleidsonsg.github.io/controle-colaboradores/**`) e `http://localhost:3000/**`.
+4. Fluxo completo: entrar, importar os 3 arquivos (e-Cidade, planilha, tabela salarial), salvar o teto, conferir painel e orçamento, pedido de acesso/aprovação, convite e nova senha.
+
+**Depois da aprovação do usuário:** conferir as variáveis `NEXT_PUBLIC_SUPABASE_*` em Settings > Secrets and variables > Actions do GitHub, juntar a branch à `main` e publicar (só com autorização).
+
+**Pendências de produto:** regra de soma da tela 2 (planilha de terceirizados), a definir pelo usuário; teste com as amostras reais (ficam só em `amostras/`); trabalho local guardado em `git stash` ("backup-analytics") e na branch local `backup-local-main`, que o usuário decidiu não usar; possível conflito entre a skill `frontend-design` do projeto e a `professional-ui` do repositório equipe-agentes.
+
+## Configurações > Gestão de usuários (2026-11-16, branch `feat/frontend-design-skill`)
+
+Pedido do usuário com captura de referência (tela "Configurações" com abas Usuários / Convites pendentes / Reset de senha).
+- Rota `/settings` (`components/gestao-usuarios.tsx`) substitui `/users`. Abas: **Usuários** (tabela no desktop, lista no celular; busca, filtro por situação, perfil Usuário/Administrador por seletor com confirmação, Aprovar/Recusar/Bloquear/Desbloquear), **Convites pendentes** (copiar link de cadastro, cancelar), **Reset de senha** (envia link do Supabase). Botão **Convidar usuário**.
+- Colunas Cargo e Departamento da referência ficaram de fora: não há esses dados (o usuário pediu só nome e e-mail).
+- Abas Segurança/Geral/Notificações da referência não foram criadas (sem conteúdo definido).
+- **Convites** = pré-aprovação (tabela `convites`, só admin; gatilho de novo usuário aprova com o papel do convite e marca como usado). O sistema não envia e-mail de convite (exigiria chave service_role/servidor); o admin copia o link `/?cadastro=1`. Depende de "Confirm email" ligado.
+- **Senha:** "Esqueci minha senha" na tela Entrar e tela "Criar senha nova" ao voltar pelo link (evento PASSWORD_RECOVERY).
+- Validação: 8 cenários extras de SQL no PostgreSQL local (inclui atualização a partir da versão anterior do script), 68/68 testes, capturas com Supabase simulado.
+
+## Acesso por solicitação e aprovação (2026-11-16, branch `feat/frontend-design-skill`)
+
+Pedido do usuário: novos acessos solicitados pela tela de cadastro, sem campos extras além de nome e e-mail.
+- **Banco** (`supabase/schema.sql`, idempotente): tabela `perfis` (status pendente/aprovado/bloqueado, papel admin/usuario), gatilho cria perfil pendente a cada novo usuário do Auth, funções `is_aprovado()`/`is_admin()`; `datasets` e `configuracoes` exigem perfil aprovado; só admin altera perfis, nunca o próprio (gatilho), e só as colunas status/papel. Usuários existentes ao rodar o script ficam aprovados; o mais antigo vira admin se não houver nenhum.
+- **Telas** (`components/auth-gate.tsx`; a tela de usuários foi depois movida para `/settings`): Entrar, Solicitar acesso (nome, e-mail, senha ≥ 8, confirmação por e-mail), Aguardando aprovação, Acesso bloqueado, Usuários (só admin: aprovar, bloquear, desbloquear, tornar/remover admin, com confirmação nas ações sensíveis). Item "Usuários" no menu só para admin.
+- **Validação:** 15 cenários de RLS testados num PostgreSQL 16 local com `auth.users`/`auth.uid()` simulados (pendente sem acesso, comum não aprova, admin não altera a si mesmo, bloqueado perde acesso, anon sem acesso); 67/67 testes; capturas com respostas do Supabase simuladas. Não testado contra um Supabase real.
+- **Configuração no Supabase** mudou: cadastro público fica LIGADO (a segurança agora é a aprovação), Confirm email ligado, Site URL e Redirect URLs (ver `docs/SUPABASE.md`).
+
+## Painel de cargos + tabela salarial + Supabase (2026-11-15, branch `feat/frontend-design-skill`, não publicada)
+
+Ponto de retorno: branch `ponto-antes-supabase` (commit `fcd6212`), pedido do usuário caso não aprove o resultado.
+- **Rotas:** `/` = Painel de cargos (tela principal); `/import` = Importar; `/budget` = Orçamento; `/employees` = Funcionários (tela 2, sem mudança de regra: a soma da planilha de terceirizados será definida depois pelo usuário).
+- **Tabela salarial:** 3º tipo de importação (`salarial`, .csv/.xlsx/.xlsm, colunas Cargo e Salário; aliases em `lib/import/tabela-salarial.ts`). Reconhecida pelo cabeçalho (cargo + salário, sem matrícula); o cartão "Tabela salarial" força o tipo. Cargo repetido: vale o primeiro (aviso).
+- **Apuração** (`lib/folha/apuracao.ts`): conta servidores ativos (sem rescisão ou rescisão futura) por "Descrição do cargo", sem diferenciar caixa/acentos; cruza com a tabela salarial; custo = salário × servidores; saldo = teto − custo; vagas livres por cargo = ⌊saldo ÷ salário⌋ (mesmo saldo para todos). Cargos fora da tabela ficam sem custo e são listados em alerta; cargos da tabela sem servidores aparecem com 0.
+- **Teto da folha:** informado no painel e gravado em `Settings.tetoFolha` (centavos).
+- **Orçamento:** usa os dados apurados quando há e-Cidade, tabela salarial e teto; senão, valores fictícios com o motivo.
+- **Supabase com login** (autorizado em 2026-11-15): `lib/supabase/client.ts`, `lib/storage/supabase-store.ts`, `components/auth-gate.tsx`, `supabase/schema.sql`, `docs/SUPABASE.md`. Sem variáveis, usa IndexedDB (v2: stores `tabelaSalarial` e `configuracoes`).
+Validação: lint, typecheck, 64/64 testes (+11), build com e sem variáveis do Supabase; capturas do painel (claro/desktop, escuro/celular), orçamento e login com dados fictícios. **Não testado contra um Supabase real** (feito pelo usuário localmente).
+
+## Orçamento da folha — simulação de vagas (2026-11-15, branch `feat/frontend-design-skill`)
+
+Rota `/budget` (antes "em preparação"): teto mensal editável, faixa da folha por cargo (AS 1 a AS 6), saldo, cartões por cargo (salário, ocupadas/vagas, livres, custo, botões + e −) e simulador de troca ("reduzir N vagas do cargo A para abrir vagas do cargo B", com aviso de exonerações). Regra: + só com saldo; − não reduz abaixo das ocupadas. Lógica pura em `lib/folha/simulacao.ts` (centavos), 8 testes em `tests/folha-simulacao.test.mjs`.
+**Valores fictícios** (`FOLHA_SIMULADA`: teto R$ 100.000; AS 1 R$ 8.500 … AS 6 R$ 2.600) até o usuário informar os reais; estado só em memória (sem gravação, nenhuma nova persistência autorizada).
+Pendências: valores reais; decidir se as ocupadas vêm da planilha importada (coluna Função) e se a configuração deve ser gravada no navegador (exige autorização).
+
+## Migração visual para Tailwind + shadcn/ui (2026-11-15, branch `feat/frontend-design-skill`, não publicada)
+
+Skill `frontend-design` (`.claude/skills/frontend-design/`) é a autoridade visual; regras em `AGENTS.md` e tokens em `docs/GUIA-VISUAL.md`. CSS manual (427 linhas) substituído por Tailwind v4 + componentes no padrão shadcn/ui em `components/ui/` (Radix via `radix-ui`, ícones `lucide-react`); `globals.css` só com tokens de tema claro/escuro. Fonte Public Sans empacotada. Telas migradas: menu lateral, Importar, Funcionários, tabela e páginas em preparação. Lógica, textos de privacidade e acessibilidade preservados (foco visível, skip link, `aria-*`, `prefers-reduced-motion`); diálogos agora usam Radix Dialog.
+Validação: lint OK, typecheck OK, 45/47 testes (2 skip = amostras reais), build com BASE_PATH OK; conferência por captura de tela em claro/escuro, 1280px e 375px, com dados fictícios.
+Pendências: teste manual com as amostras reais; revisão de acessibilidade com leitor de tela; tela de cards por função (vagas ocupadas/livres).
 
 ## Importação v2 + redesign — **publicado em 2026-11-13** (`d6e7932`, deployment success, smoke HTTP 200)
 
