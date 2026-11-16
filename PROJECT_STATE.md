@@ -4,6 +4,22 @@
 **Pasta:** `Controle_Colaboradores`  
 **Plano:** [controle-colaboradores.md](./controle-colaboradores.md)
 
+## Retomada no computador local (2026-11-16) — LEIA PRIMEIRO
+
+Todo o trabalho desta etapa está na branch `feat/frontend-design-skill` (não publicada; `main` intacta). Ponto de retorno: branch `ponto-antes-supabase`.
+
+**Bloqueio atual:** no computador do usuário, o login falha com "Failed to fetch". O `.env.local` está correto (um celular acessa o projeto Supabase normalmente), mas o navegador do computador não abre `https://<projeto>.supabase.co/auth/v1/health` ("Não é possível acessar esse site"). Causa provável: rede corporativa (IP 10.19.x.x) ou DNS/proxy/antivírus da máquina. Diagnosticar com `nslookup` (DNS padrão e 1.1.1.1), `Test-NetConnection -Port 443`, `netsh winhttp show proxy`, arquivo hosts e `ipconfig /flushdns`; testar também com o computador no roteador do celular. Propor a correção ao usuário antes de alterar configurações. Enquanto isso, renomear `.env.local` faz o sistema rodar sem login (IndexedDB).
+
+**Ainda não verificado contra o Supabase real** (só em PostgreSQL local simulado e com respostas simuladas):
+1. Se `supabase/schema.sql` (versão atual, com `perfis` e `convites`) foi executado no SQL Editor.
+2. Se o usuário do dono existe em Authentication > Users e virou administrador (ver `docs/SUPABASE.md`).
+3. Supabase Auth: "Allow new users to sign up" e "Confirm email" ligados; Redirect URLs com o site publicado (`https://cleidsonsg.github.io/controle-colaboradores/**`) e `http://localhost:3000/**`.
+4. Fluxo completo: entrar, importar os 3 arquivos (e-Cidade, planilha, tabela salarial), salvar o teto, conferir painel e orçamento, pedido de acesso/aprovação, convite e nova senha.
+
+**Depois da aprovação do usuário:** conferir as variáveis `NEXT_PUBLIC_SUPABASE_*` em Settings > Secrets and variables > Actions do GitHub, juntar a branch à `main` e publicar (só com autorização).
+
+**Pendências de produto:** regra de soma da tela 2 (planilha de terceirizados), a definir pelo usuário; teste com as amostras reais (ficam só em `amostras/`); trabalho local guardado em `git stash` ("backup-analytics") e na branch local `backup-local-main`, que o usuário decidiu não usar; possível conflito entre a skill `frontend-design` do projeto e a `professional-ui` do repositório equipe-agentes.
+
 ## Configurações > Gestão de usuários (2026-11-16, branch `feat/frontend-design-skill`)
 
 Pedido do usuário com captura de referência (tela "Configurações" com abas Usuários / Convites pendentes / Reset de senha).
