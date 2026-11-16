@@ -5,7 +5,6 @@ import { Construction } from "lucide-react";
 const sections: Record<string, string> = {
   statistics: "Estatísticas de Cargo",
   positions: "Manutenção de Cargos",
-  settings: "Configurações",
   help: "Ajuda",
 };
 

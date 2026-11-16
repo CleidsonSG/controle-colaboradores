@@ -4,11 +4,21 @@
 **Pasta:** `Controle_Colaboradores`  
 **Plano:** [controle-colaboradores.md](./controle-colaboradores.md)
 
+## Configurações > Gestão de usuários (2026-11-16, branch `feat/frontend-design-skill`)
+
+Pedido do usuário com captura de referência (tela "Configurações" com abas Usuários / Convites pendentes / Reset de senha).
+- Rota `/settings` (`components/gestao-usuarios.tsx`) substitui `/users`. Abas: **Usuários** (tabela no desktop, lista no celular; busca, filtro por situação, perfil Usuário/Administrador por seletor com confirmação, Aprovar/Recusar/Bloquear/Desbloquear), **Convites pendentes** (copiar link de cadastro, cancelar), **Reset de senha** (envia link do Supabase). Botão **Convidar usuário**.
+- Colunas Cargo e Departamento da referência ficaram de fora: não há esses dados (o usuário pediu só nome e e-mail).
+- Abas Segurança/Geral/Notificações da referência não foram criadas (sem conteúdo definido).
+- **Convites** = pré-aprovação (tabela `convites`, só admin; gatilho de novo usuário aprova com o papel do convite e marca como usado). O sistema não envia e-mail de convite (exigiria chave service_role/servidor); o admin copia o link `/?cadastro=1`. Depende de "Confirm email" ligado.
+- **Senha:** "Esqueci minha senha" na tela Entrar e tela "Criar senha nova" ao voltar pelo link (evento PASSWORD_RECOVERY).
+- Validação: 8 cenários extras de SQL no PostgreSQL local (inclui atualização a partir da versão anterior do script), 68/68 testes, capturas com Supabase simulado.
+
 ## Acesso por solicitação e aprovação (2026-11-16, branch `feat/frontend-design-skill`)
 
 Pedido do usuário: novos acessos solicitados pela tela de cadastro, sem campos extras além de nome e e-mail.
 - **Banco** (`supabase/schema.sql`, idempotente): tabela `perfis` (status pendente/aprovado/bloqueado, papel admin/usuario), gatilho cria perfil pendente a cada novo usuário do Auth, funções `is_aprovado()`/`is_admin()`; `datasets` e `configuracoes` exigem perfil aprovado; só admin altera perfis, nunca o próprio (gatilho), e só as colunas status/papel. Usuários existentes ao rodar o script ficam aprovados; o mais antigo vira admin se não houver nenhum.
-- **Telas** (`components/auth-gate.tsx`, `components/usuarios-view.tsx`, rota `/users`): Entrar, Solicitar acesso (nome, e-mail, senha ≥ 8, confirmação por e-mail), Aguardando aprovação, Acesso bloqueado, Usuários (só admin: aprovar, bloquear, desbloquear, tornar/remover admin, com confirmação nas ações sensíveis). Item "Usuários" no menu só para admin.
+- **Telas** (`components/auth-gate.tsx`; a tela de usuários foi depois movida para `/settings`): Entrar, Solicitar acesso (nome, e-mail, senha ≥ 8, confirmação por e-mail), Aguardando aprovação, Acesso bloqueado, Usuários (só admin: aprovar, bloquear, desbloquear, tornar/remover admin, com confirmação nas ações sensíveis). Item "Usuários" no menu só para admin.
 - **Validação:** 15 cenários de RLS testados num PostgreSQL 16 local com `auth.users`/`auth.uid()` simulados (pendente sem acesso, comum não aprova, admin não altera a si mesmo, bloqueado perde acesso, anon sem acesso); 67/67 testes; capturas com respostas do Supabase simuladas. Não testado contra um Supabase real.
 - **Configuração no Supabase** mudou: cadastro público fica LIGADO (a segurança agora é a aprovação), Confirm email ligado, Site URL e Redirect URLs (ver `docs/SUPABASE.md`).
 

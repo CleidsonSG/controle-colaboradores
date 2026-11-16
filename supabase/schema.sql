@@ -80,13 +80,41 @@ revoke all on function public.is_admin() from public, anon;
 grant execute on function public.is_aprovado() to authenticated;
 grant execute on function public.is_admin() to authenticated;
 
--- Todo novo usuário do Supabase Auth ganha um perfil pendente (nome vem do formulário de cadastro).
+-- Convites (2026-11-16): pré-aprovação feita por um administrador. Quem se cadastrar com um e-mail convidado
+-- já entra aprovado, com o perfil escolhido no convite. Exige "Confirm email" ligado no Supabase, para que só o
+-- dono do e-mail consiga entrar.
+create table if not exists public.convites (
+  email text primary key check (email = lower(btrim(email)) and position('@' in email) > 1),
+  papel text not null default 'usuario' check (papel in ('admin', 'usuario')),
+  criado_por uuid default auth.uid(),
+  criado_em timestamptz not null default now(),
+  usado_em timestamptz,
+  usado_por uuid
+);
+
+-- Todo novo usuário do Supabase Auth ganha um perfil: aprovado se havia convite, senão pendente.
 create or replace function public.criar_perfil_novo_usuario()
 returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  convite public.convites%rowtype;
 begin
-  insert into public.perfis (user_id, email, nome)
-  values (new.id, coalesce(new.email, ''), left(coalesce(new.raw_user_meta_data ->> 'nome', ''), 120))
+  select * into convite from public.convites
+  where email = lower(btrim(coalesce(new.email, ''))) and usado_em is null
+  for update;
+
+  insert into public.perfis (user_id, email, nome, status, papel)
+  values (
+    new.id,
+    coalesce(new.email, ''),
+    left(coalesce(new.raw_user_meta_data ->> 'nome', ''), 120),
+    case when convite.email is not null then 'aprovado' else 'pendente' end,
+    coalesce(convite.papel, 'usuario')
+  )
   on conflict (user_id) do nothing;
+
+  if convite.email is not null then
+    update public.convites set usado_em = now(), usado_por = new.id where email = convite.email;
+  end if;
   return new;
 end $$;
 
@@ -158,3 +186,12 @@ create policy "aprovados leem configuracoes" on public.configuracoes
   for select to authenticated using (public.is_aprovado());
 create policy "aprovados gravam configuracoes" on public.configuracoes
   for all to authenticated using (public.is_aprovado()) with check (public.is_aprovado());
+
+-- Convites: só administradores veem, criam e cancelam.
+alter table public.convites enable row level security;
+revoke all on public.convites from anon, authenticated;
+grant select, insert, delete on public.convites to authenticated;
+
+drop policy if exists "admin gerencia convites" on public.convites;
+create policy "admin gerencia convites" on public.convites
+  for all to authenticated using (public.is_admin()) with check (public.is_admin());

@@ -18,7 +18,6 @@ import {
   ShieldCheck,
   Sun,
   Upload,
-  UserCog,
   Users,
   Wallet,
   X,
@@ -36,7 +35,6 @@ const navigation: { label: string; href: string; icon: LucideIcon; adminOnly?: b
   { label: "Importar Dados", href: "/import", icon: Upload },
   { label: "Estatísticas de Cargo", href: "/statistics", icon: ChartColumn },
   { label: "Manutenção de Cargos", href: "/positions", icon: ClipboardList },
-  { label: "Usuários", href: "/users", icon: UserCog, adminOnly: true },
   { label: "Configurações", href: "/settings", icon: Settings },
   { label: "Ajuda", href: "/help", icon: CircleHelp },
 ];

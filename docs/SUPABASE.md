@@ -8,8 +8,14 @@ Sem elas, tudo continua funcionando só no navegador (IndexedDB), sem login.
 1. A pessoa clica em **Solicitar acesso** na tela de entrada e informa nome, e-mail e senha.
 2. Confirma o e-mail pelo link que o Supabase envia.
 3. Ao entrar, vê **Aguardando aprovação**. Nenhum dado aparece.
-4. Um administrador abre **Usuários** no menu e clica em **Aprovar** (ou **Bloquear**).
+4. Um administrador abre **Configurações > Gestão de usuários** e clica em **Aprovar** (ou **Recusar**).
 5. Aprovada, a pessoa vê o sistema ao clicar em **Verificar de novo** ou entrar novamente.
+
+Na mesma tela o administrador também:
+- muda o **perfil** (Usuário ou Administrador) de quem já está aprovado;
+- **convida** pessoas: registra o e-mail e o perfil; quem se cadastrar com esse e-mail entra **já aprovado**.
+  O sistema não envia o convite por e-mail: copie o link de cadastro mostrado e envie para a pessoa;
+- envia **link de nova senha** (aba Reset de senha). A pessoa também pode usar **Esqueci minha senha** na tela de entrada.
 
 As regras do banco garantem isso: só perfis **aprovados** leem ou gravam dados; só **administradores** alteram perfis;
 ninguém altera o próprio acesso. Uma conta criada fora da tela (usando a chave pública) também nasce pendente.
@@ -36,10 +42,12 @@ update public.perfis set status = 'aprovado', papel = 'admin' where email = 'ema
 ## 3. Cadastro e e-mails
 
 - **Authentication > Sign In / Providers**: deixe **Allow new users to sign up** **ligado** (é o que permite a tela Solicitar acesso)
-  e **Confirm email** ligado.
+  e **Confirm email** ligado. **Confirm email é obrigatório** para os convites serem seguros: sem ele, alguém poderia se cadastrar
+  com o e-mail de um convidado e entrar aprovado.
 - **Authentication > URL Configuration**:
   - **Site URL**: o endereço do site publicado (ex.: `https://cleidsonsg.github.io/controle-colaboradores/`).
-  - **Redirect URLs**: adicione também `http://localhost:3000/**` para os testes no computador.
+  - **Redirect URLs**: adicione o endereço do site publicado com `**` no fim e também `http://localhost:3000/**` para os testes no computador.
+    Sem isso, os links de confirmação de e-mail e de nova senha não voltam para o sistema.
 - O e-mail padrão do Supabase tem limite baixo de envios por hora. Para muitos pedidos, configure um SMTP próprio em
   **Authentication > Emails > SMTP Settings**.
 
@@ -49,7 +57,8 @@ update public.perfis set status = 'aprovado', papel = 'admin' where email = 'ema
    Nunca use a chave `service_role`.
 2. `npm install` e `npm run dev`, e abra o endereço mostrado no terminal.
 3. Entre com o seu usuário e importe os arquivos (os dados antigos do navegador não são copiados).
-4. Para testar o pedido de acesso, use outro navegador (ou janela anônima), clique em **Solicitar acesso** e aprove pela tela **Usuários**.
+4. Para testar o pedido de acesso, use outro navegador (ou janela anônima), clique em **Solicitar acesso** e aprove em **Configurações**.
+5. Para testar o convite, registre um e-mail em **Convidar usuário**, abra o link de cadastro numa janela anônima e cadastre-se com esse e-mail.
 
 ## 5. Site publicado (GitHub Pages)
 

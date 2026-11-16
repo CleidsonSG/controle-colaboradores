@@ -24,3 +24,12 @@ test("mensagens de erro do cadastro em português", () => {
   assert.match(mensagemErroCadastro("Signups not allowed for this instance"), /desativados/);
   assert.match(mensagemErroCadastro("algo inesperado"), /Tente novamente/);
 });
+
+import { emailValido, normalizarEmail } from "../lib/supabase/perfis.ts";
+
+test("e-mail do convite é normalizado e validado", () => {
+  assert.equal(normalizarEmail("  Pessoa@Exemplo.TEST "), "pessoa@exemplo.test");
+  assert.equal(emailValido("pessoa@exemplo.test"), true);
+  assert.equal(emailValido("pessoa@exemplo"), false);
+  assert.equal(emailValido("sem arroba.test"), false);
+});

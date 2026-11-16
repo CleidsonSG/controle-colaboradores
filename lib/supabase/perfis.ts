@@ -81,3 +81,69 @@ export function mensagemErroCadastro(mensagem: string): string {
   if (m.includes("invalid") && m.includes("email")) return "Confira o e-mail digitado.";
   return "Não foi possível enviar o pedido agora. Tente novamente.";
 }
+
+/* ---------- Convites (pré-aprovação) ---------- */
+
+export type Convite = { email: string; papel: PapelPerfil; criadoEm: string; usadoEm: string | null };
+
+type ConviteRow = { email: string; papel: PapelPerfil; criado_em: string; usado_em: string | null };
+
+const EMAIL_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export function normalizarEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+export function emailValido(email: string): boolean {
+  return EMAIL_VALIDO.test(normalizarEmail(email));
+}
+
+/** Convites ainda não usados, mais recentes primeiro. */
+export async function listarConvites(supabase: SupabaseClient): Promise<Convite[]> {
+  const { data, error } = await supabase
+    .from("convites")
+    .select("email, papel, criado_em, usado_em")
+    .is("usado_em", null)
+    .order("criado_em", { ascending: false })
+    .returns<ConviteRow[]>();
+  if (error) throw new Error("Não foi possível carregar os convites.");
+  return (data ?? []).map((row) => ({ email: row.email, papel: row.papel, criadoEm: row.criado_em, usadoEm: row.usado_em }));
+}
+
+export async function criarConvite(supabase: SupabaseClient, email: string, papel: PapelPerfil): Promise<Convite> {
+  const { data, error } = await supabase
+    .from("convites")
+    .insert({ email: normalizarEmail(email), papel })
+    .select("email, papel, criado_em, usado_em")
+    .single<ConviteRow>();
+  if (error) {
+    throw new Error(error.code === "23505" ? "Já existe um convite para este e-mail." : "Não foi possível registrar o convite.");
+  }
+  return { email: data.email, papel: data.papel, criadoEm: data.criado_em, usadoEm: data.usado_em };
+}
+
+export async function cancelarConvite(supabase: SupabaseClient, email: string): Promise<void> {
+  const { error } = await supabase.from("convites").delete().eq("email", email);
+  if (error) throw new Error("Não foi possível cancelar o convite.");
+}
+
+/* ---------- Senha ---------- */
+
+/** Endereço do sistema (com o caminho do GitHub Pages), para links enviados por e-mail. */
+export function enderecoDoSistema(): string {
+  const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+  return typeof window === "undefined" ? base || "/" : `${window.location.origin}${base}/`;
+}
+
+/** Pede ao Supabase que envie um link para a pessoa criar uma senha nova. */
+export async function enviarLinkNovaSenha(supabase: SupabaseClient, email: string): Promise<void> {
+  const { error } = await supabase.auth.resetPasswordForEmail(normalizarEmail(email), { redirectTo: enderecoDoSistema() });
+  if (error) {
+    const m = error.message.toLowerCase();
+    throw new Error(
+      m.includes("rate limit") || m.includes("seconds")
+        ? "Muitos envios em pouco tempo. Aguarde alguns minutos e tente de novo."
+        : "Não foi possível enviar o link agora. Tente novamente.",
+    );
+  }
+}

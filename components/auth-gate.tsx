@@ -2,12 +2,12 @@
 
 import { createContext, useCallback, useContext, useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { CircleAlert, Clock, Loader2, LockKeyhole, LogOut, MailCheck, RefreshCw, ShieldX, UserPlus, Users } from "lucide-react";
+import { CircleAlert, Clock, KeyRound, Loader2, LockKeyhole, LogOut, MailCheck, RefreshCw, ShieldX, UserPlus, Users } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase/client";
-import { carregarMeuPerfil, mensagemErroCadastro, type Perfil } from "@/lib/supabase/perfis";
+import { carregarMeuPerfil, emailValido, enviarLinkNovaSenha, mensagemErroCadastro, type Perfil } from "@/lib/supabase/perfis";
 
 type AuthInfo = {
   userId: string | null;
@@ -62,7 +62,7 @@ function Erro({ texto }: { texto: string }) {
 
 /* ---------- Entrar ---------- */
 
-function FormEntrar({ onCadastrar }: { onCadastrar: () => void }) {
+function FormEntrar({ onCadastrar, onEsqueci }: { onCadastrar: () => void; onEsqueci: () => void }) {
   const emailId = useId();
   const senhaId = useId();
   const [email, setEmail] = useState("");
@@ -99,7 +99,12 @@ function FormEntrar({ onCadastrar }: { onCadastrar: () => void }) {
           <Input id={emailId} type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
         <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium" htmlFor={senhaId}>Senha</label>
+          <div className="flex items-baseline justify-between gap-2">
+            <label className="text-sm font-medium" htmlFor={senhaId}>Senha</label>
+            <Button variant="link" className="h-auto p-0 text-sm" type="button" onClick={onEsqueci}>
+              Esqueci minha senha
+            </Button>
+          </div>
           <Input id={senhaId} type="password" autoComplete="current-password" required value={senha} onChange={(e) => setSenha(e.target.value)} />
         </div>
         {erro && <Erro texto={erro} />}
@@ -218,6 +223,124 @@ function FormCadastro({ onEntrar }: { onEntrar: () => void }) {
   );
 }
 
+/* ---------- Esqueci minha senha ---------- */
+
+function FormEsqueci({ onEntrar }: { onEntrar: () => void }) {
+  const emailId = useId();
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [erro, setErro] = useState("");
+  const [enviado, setEnviado] = useState(false);
+
+  async function enviar(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!emailValido(email)) return setErro("Digite um e-mail válido.");
+    setBusy(true);
+    setErro("");
+    try {
+      await enviarLinkNovaSenha(getSupabase(), email);
+      setEnviado(true);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível enviar o link.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (enviado) {
+    return (
+      <div className="flex flex-col gap-5 rounded-lg border bg-card p-6 shadow-xs" role="status">
+        <span className="grid size-11 place-items-center rounded-full bg-secondary text-secondary-foreground" aria-hidden="true">
+          <MailCheck className="size-5" />
+        </span>
+        <div className="flex flex-col gap-1.5">
+          <h1 className="text-xl font-semibold tracking-tight">Confira seu e-mail</h1>
+          <p className="text-sm text-muted-foreground">
+            Se <strong className="font-medium text-foreground">{email.trim()}</strong> tiver cadastro, você vai receber um link para criar uma senha nova.
+          </p>
+        </div>
+        <Button variant="outline" type="button" onClick={onEntrar}>Voltar para Entrar</Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <form className="flex flex-col gap-5 rounded-lg border bg-card p-6 shadow-xs" onSubmit={enviar} noValidate>
+        <div className="flex flex-col gap-1">
+          <h1 className="text-xl font-semibold tracking-tight">Esqueci minha senha</h1>
+          <p className="text-sm text-muted-foreground">Informe seu e-mail e enviaremos um link para criar uma senha nova.</p>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium" htmlFor={emailId}>E-mail</label>
+          <Input id={emailId} type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+        </div>
+        {erro && <Erro texto={erro} />}
+        <Button type="submit" size="lg" disabled={busy || email.trim() === ""}>
+          {busy ? <Loader2 className="animate-spin" aria-hidden="true" /> : <KeyRound aria-hidden="true" />}
+          Enviar link
+        </Button>
+      </form>
+      <p className="text-center text-sm text-muted-foreground">
+        Lembrou a senha?{" "}
+        <Button variant="link" className="h-auto p-0" type="button" onClick={onEntrar}>
+          Entrar
+        </Button>
+      </p>
+    </div>
+  );
+}
+
+/* ---------- Nova senha (ao voltar pelo link do e-mail) ---------- */
+
+function FormNovaSenha({ onConcluir }: { onConcluir: () => void }) {
+  const senhaId = useId();
+  const confirmaId = useId();
+  const [senha, setSenha] = useState("");
+  const [confirma, setConfirma] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [erro, setErro] = useState("");
+
+  async function salvar(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (senha.length < SENHA_MINIMA) return setErro(`A senha precisa ter pelo menos ${SENHA_MINIMA} caracteres.`);
+    if (senha !== confirma) return setErro("As senhas não são iguais.");
+    setBusy(true);
+    setErro("");
+    const { error } = await getSupabase().auth.updateUser({ password: senha });
+    setBusy(false);
+    if (error) {
+      setErro(error.message.toLowerCase().includes("different") ? "A senha nova precisa ser diferente da anterior." : "Não foi possível salvar a senha. Peça um link novo.");
+      return;
+    }
+    onConcluir();
+  }
+
+  return (
+    <Moldura>
+      <form className="flex flex-col gap-5 rounded-lg border bg-card p-6 shadow-xs" onSubmit={salvar} noValidate>
+        <div className="flex flex-col gap-1">
+          <h1 className="text-xl font-semibold tracking-tight">Criar senha nova</h1>
+          <p className="text-sm text-muted-foreground">Escolha uma senha com pelo menos {SENHA_MINIMA} caracteres.</p>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium" htmlFor={senhaId}>Senha nova</label>
+          <Input id={senhaId} type="password" autoComplete="new-password" required value={senha} onChange={(e) => setSenha(e.target.value)} autoFocus />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium" htmlFor={confirmaId}>Confirme a senha nova</label>
+          <Input id={confirmaId} type="password" autoComplete="new-password" required value={confirma} onChange={(e) => setConfirma(e.target.value)} />
+        </div>
+        {erro && <Erro texto={erro} />}
+        <Button type="submit" size="lg" disabled={busy || senha === "" || confirma === ""}>
+          {busy ? <Loader2 className="animate-spin" aria-hidden="true" /> : <KeyRound aria-hidden="true" />}
+          Salvar senha
+        </Button>
+      </form>
+    </Moldura>
+  );
+}
+
 /* ---------- Pendente / bloqueado ---------- */
 
 function TelaSituacao({ perfil, email, onVerificar, verificando }: { perfil: Perfil | null; email: string; onVerificar: () => void; verificando: boolean }) {
@@ -277,7 +400,12 @@ type EstadoPerfil = { status: "carregando" } | { status: "ok"; perfil: Perfil | 
 
 function SupabaseGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
-  const [modo, setModo] = useState<"entrar" | "cadastrar">("entrar");
+  // Link de cadastro enviado no convite (?cadastro=1) abre direto em "Solicitar acesso".
+  // Seguro na pré-renderização: o formulário só aparece depois que a sessão é verificada no navegador.
+  const [modo, setModo] = useState<"entrar" | "cadastrar" | "esqueci">(() =>
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).has("cadastro") ? "cadastrar" : "entrar",
+  );
+  const [recuperando, setRecuperando] = useState(false);
   const [perfil, setPerfil] = useState<EstadoPerfil>({ status: "carregando" });
   const [verificando, setVerificando] = useState(false);
   const userId = session?.user.id ?? null;
@@ -288,7 +416,10 @@ function SupabaseGate({ children }: { children: ReactNode }) {
     void supabase.auth.getSession().then(({ data }) => {
       if (active) setSession(data.session);
     });
-    const { data } = supabase.auth.onAuthStateChange((_event, next) => setSession(next));
+    const { data } = supabase.auth.onAuthStateChange((event, next) => {
+      if (event === "PASSWORD_RECOVERY") setRecuperando(true);
+      setSession(next);
+    });
     return () => {
       active = false;
       data.subscription.unsubscribe();
@@ -317,8 +448,15 @@ function SupabaseGate({ children }: { children: ReactNode }) {
 
   if (session === undefined) return <Verificando texto="Verificando acesso…" />;
   if (!session) {
-    return <Moldura>{modo === "entrar" ? <FormEntrar onCadastrar={() => setModo("cadastrar")} /> : <FormCadastro onEntrar={() => setModo("entrar")} />}</Moldura>;
+    return (
+      <Moldura>
+        {modo === "entrar" && <FormEntrar onCadastrar={() => setModo("cadastrar")} onEsqueci={() => setModo("esqueci")} />}
+        {modo === "cadastrar" && <FormCadastro onEntrar={() => setModo("entrar")} />}
+        {modo === "esqueci" && <FormEsqueci onEntrar={() => setModo("entrar")} />}
+      </Moldura>
+    );
   }
+  if (recuperando) return <FormNovaSenha onConcluir={() => setRecuperando(false)} />;
   if (perfil.status === "carregando") return <Verificando texto="Carregando seu perfil…" />;
   if (perfil.status === "erro") {
     return (
