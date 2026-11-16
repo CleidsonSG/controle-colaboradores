@@ -1,6 +1,6 @@
 # Guia visual — Controle de Colaboradores
 
-Autoridade: skill [`frontend-design`](../.claude/skills/frontend-design/SKILL.md). Este guia define os tokens e padrões; **a referência visual do usuário, quando informada, tem prioridade** e deve ser registrada na seção final.
+Autoridade: agente e skill `frontend-design` do workspace; especificidades na skill local [`controle-visual`](../.claude/skills/controle-visual/SKILL.md). Este guia define os tokens e padrões; **a referência visual do usuário, quando informada, tem prioridade** e deve ser registrada na seção final.
 
 ## Por que a aparência anterior não agradava
 
