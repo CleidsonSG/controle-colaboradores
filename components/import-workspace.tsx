@@ -291,6 +291,11 @@ export default function ImportWorkspace() {
   const readyKinds = KINDS.filter((kind) => slots[kind].status === "ready");
   const anyReading = KINDS.some((kind) => slots[kind].status === "reading");
   const replaceKinds = readyKinds.filter((kind) => existing[kind]);
+  // 1ª importação (nada gravado, inclusive depois de "Limpar dados importados"): os três tipos são obrigatórios.
+  // Depois, cada tipo pode ser reimportado sozinho. Vale por tipo: o que não está gravado precisa vir agora.
+  const firstImport = KINDS.every((kind) => !existing[kind]);
+  const missingKinds = KINDS.filter((kind) => !existing[kind] && slots[kind].status !== "ready");
+  const canImport = readyKinds.length > 0 && missingKinds.length === 0;
   const step = done || saving || replaceOpen ? 3 : readyKinds.length > 0 ? 2 : 1;
 
   async function refreshExisting() {
@@ -408,6 +413,7 @@ export default function ImportWorkspace() {
   }
 
   function onImportClick() {
+    if (!canImport) return;
     if (replaceKinds.length > 0) setReplaceOpen(true);
     else void save();
   }
@@ -439,6 +445,7 @@ export default function ImportWorkspace() {
           <h1 className="text-2xl font-semibold tracking-tight">Importar arquivos</h1>
           <p className="text-muted-foreground">
             Envie o CSV do e-Cidade, a planilha Excel e a tabela salarial. Pode soltar todos de uma vez: o tipo é reconhecido pelo conteúdo.
+            Na primeira importação os três são obrigatórios; depois, cada um pode ser reimportado sozinho.
             Depois da importação, o painel de cargos é calculado automaticamente.
           </p>
         </div>
@@ -540,11 +547,13 @@ export default function ImportWorkspace() {
 
       <div className="flex flex-col gap-4 rounded-lg border bg-card p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
         <p className="text-sm text-muted-foreground">
-          {readyKinds.length === 0
-            ? "Selecione ao menos um arquivo para habilitar a importação."
-            : `${readyKinds.length === 1 ? "1 arquivo pronto" : `${readyKinds.length} arquivos prontos`}. Ao importar, os registros são gravados${storageMode() === "supabase" ? " no Supabase" : " neste navegador"}.`}
+          {missingKinds.length > 0
+            ? `${firstImport ? "Primeira importação: envie os três arquivos." : "Ainda não há dados de todos os tipos."} Falta${missingKinds.length > 1 ? "m" : ""}: ${missingKinds.map((kind) => CARD[kind].title).join(", ")}.`
+            : readyKinds.length === 0
+              ? "Selecione um ou mais arquivos para reimportar. Cada tipo pode ser importado sozinho."
+              : `${readyKinds.length === 1 ? "1 arquivo pronto" : `${readyKinds.length} arquivos prontos`}. Ao importar, os registros são gravados${storageMode() === "supabase" ? " no Supabase" : " neste navegador"}.`}
         </p>
-        <Button size="lg" type="button" onClick={onImportClick} disabled={readyKinds.length === 0 || saving || anyReading}>
+        <Button size="lg" type="button" onClick={onImportClick} disabled={!canImport || saving || anyReading}>
           {saving && <Loader2 className="animate-spin" aria-hidden="true" />}
           Importar arquivos
         </Button>
