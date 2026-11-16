@@ -83,3 +83,15 @@ test("folhaDaApuracao alimenta o simulador só com cargos com salário", () => {
   assert.deepEqual(folha.cargos.map((c) => [c.vagas, c.ocupadas, c.salario]).sort((a, b) => b[2] - a[2]), [[2, 2, 850_000], [0, 0, 540_000], [2, 2, 260_000]]);
   assert.equal(folhaDaApuracao(apurar(servidores, tabela, null, REF)), null);
 });
+
+test("apuração do e-Cidade usa só a aba Comissionado da tabela salarial", async () => {
+  const { apurar } = await import("../lib/folha/apuracao.ts");
+  const servidor = { matricula: "1", nome: "Pessoa Fictícia", descricaoCargo: "AGENTE EDUCACIONAL", lotacao: "", admissao: null, rescisao: null, comissionado: true };
+  const tabela = [
+    { cargo: "AGENTE EDUCACIONAL", salario: 6780.6, linha: 2, origem: "Terceirizado" },
+    { cargo: "AGENTE EDUCACIONAL", salario: 1978.55, linha: 2, origem: "Comissionado" },
+    { cargo: "ARQUITETO", salario: 12307.69, linha: 3, origem: "Terceirizado" },
+  ];
+  const a = apurar([servidor], tabela, null, "2026-01-01");
+  assert.deepEqual(a.cargos.map((c) => [c.nome, c.salario]), [["AGENTE EDUCACIONAL", 197855]]);
+});

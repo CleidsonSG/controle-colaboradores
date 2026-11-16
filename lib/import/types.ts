@@ -1,10 +1,12 @@
 export type ImportKind = "ecidade" | "planilha" | "salarial";
 
-/** Linha da tabela salarial: um cargo e o salário mensal (em reais). */
+/** Linha da tabela salarial: uma função (cargo) e a remuneração mensal (em reais). */
 export type CargoSalario = {
   cargo: string;
   salario: number | null;
   linha: number;
+  /** Aba de onde veio (Comissionado ou Terceirizado); ausente em CSV ou aba única. */
+  origem?: Origem;
 };
 
 export type ServidorECidade = {

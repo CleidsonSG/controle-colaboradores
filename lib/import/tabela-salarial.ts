@@ -2,13 +2,13 @@ import Papa from "papaparse";
 import type { Worksheet } from "exceljs";
 import { orderedSheets, readCell, rowTexts, type LoadedWorkbook } from "./planilha-excel.ts";
 import { decodeText, detectDelimiter, normalizeHeader, parseMoney, WarningCollector } from "./text.ts";
-import { ImportFileError, type CargoSalario, type ImportResult } from "./types.ts";
+import { ImportFileError, type CargoSalario, type ImportResult, type Origem } from "./types.ts";
 
 const MAX_HEADER_SCAN = 30;
-const CARGO_ALIASES = ["cargo", "descricao do cargo", "descricao cargo", "funcao"];
-const SALARIO_ALIASES = ["salario", "salario base", "vencimento", "vencimento base", "remuneracao", "valor"];
+const CARGO_ALIASES = ["funcao", "cargo", "descricao do cargo", "descricao cargo"];
+const SALARIO_ALIASES = ["remuneracao", "salario", "salario base", "vencimento", "vencimento base", "valor"];
 
-/** Cabeçalho de tabela salarial: tem cargo e salário, e não tem matrícula (que indicaria lista de pessoas). */
+/** Cabeçalho de tabela salarial: tem função (ou cargo) e remuneração (ou salário), e não tem matrícula (que indicaria lista de pessoas). */
 export function isSalarialHeader(cells: string[]): boolean {
   const normalized = cells.map((cell) => normalizeHeader(cell ?? ""));
   const hasCargo = normalized.some((cell) => CARGO_ALIASES.includes(cell));
@@ -17,7 +17,7 @@ export function isSalarialHeader(cells: string[]): boolean {
 }
 
 function columnIndex(cells: string[], aliases: string[]): number {
-  // A primeira lista de aliases tem prioridade: "cargo" vence "funcao", "salario" vence "valor".
+  // A ordem dos aliases é a prioridade: "funcao" vence "cargo", "remuneracao" vence "salario" e "valor".
   for (const alias of aliases) {
     const index = cells.findIndex((cell) => cell === alias);
     if (index >= 0) return index;
@@ -25,42 +25,56 @@ function columnIndex(cells: string[], aliases: string[]): number {
   return -1;
 }
 
-/** Junta as linhas lidas, avisando sobre cargos repetidos (vale o primeiro) e salários inválidos. */
-function finish(fileName: string, rows: { cargo: string; salario: string | number | null; linha: number }[], sheet?: string): ImportResult<CargoSalario> {
-  const warnings = new WarningCollector();
-  const seen = new Set<string>();
-  const records: CargoSalario[] = [];
-  for (const row of rows) {
-    const cargo = row.cargo.trim();
-    if (cargo === "") {
-      if (row.salario !== null && String(row.salario).trim() !== "") {
-        warnings.add("linha-ignorada", "Linhas sem cargo foram ignoradas.", row.linha);
-      }
-      continue;
-    }
-    const key = normalizeHeader(cargo);
-    if (seen.has(key)) {
-      warnings.add("duplicidade", "Cargos repetidos na tabela: foi usado o primeiro salário encontrado.", row.linha);
-      continue;
-    }
-    seen.add(key);
-    const money = parseMoney(row.salario);
-    if (money.invalid || money.value === null) {
-      warnings.add("valor-invalido", "Cargos sem salário válido ficaram sem valor.", row.linha);
-    }
-    records.push({ cargo, salario: money.invalid ? null : money.value, linha: row.linha });
-  }
-  if (records.length === 0) throw new ImportFileError("vazio", "Não encontramos cargos nesta tabela salarial.");
-  return {
-    kind: "salarial",
-    fileName,
-    records,
-    countsBySheet: sheet ? [{ sheet, count: records.length }] : [],
-    warnings: warnings.list(),
-  };
+type LinhaSalarial = { cargo: string; salario: string | number | null; linha: number };
+type GrupoSalarial = { rows: LinhaSalarial[]; sheet?: string; origem?: Origem };
+
+/** Origem pela aba: "Comissionado(s)" ou "Terceirizado(s)"; sem nome reconhecível, vale a posição (1ª = comissionados). */
+function origemDaAba(nome: string, posicao: number, total: number): Origem | undefined {
+  const chave = normalizeHeader(nome);
+  if (chave.includes("terceir")) return "Terceirizado";
+  if (chave.includes("comiss")) return "Comissionado";
+  if (total < 2) return undefined;
+  return posicao === 0 ? "Comissionado" : posicao === 1 ? "Terceirizado" : undefined;
 }
 
-const MISSING = ["Cargo", "Salário"];
+/** Junta as linhas lidas, avisando sobre funções repetidas (vale a primeira de cada aba) e remunerações inválidas. */
+function finish(fileName: string, grupos: GrupoSalarial[]): ImportResult<CargoSalario> {
+  const warnings = new WarningCollector();
+  const records: CargoSalario[] = [];
+  const countsBySheet: ImportResult<CargoSalario>["countsBySheet"] = [];
+  for (const grupo of grupos) {
+    const seen = new Set<string>();
+    let count = 0;
+    for (const row of grupo.rows) {
+      const cargo = row.cargo.trim();
+      if (cargo === "") {
+        if (row.salario !== null && String(row.salario).trim() !== "") {
+          warnings.add("linha-ignorada", "Linhas sem função foram ignoradas.", row.linha);
+        }
+        continue;
+      }
+      const key = normalizeHeader(cargo);
+      if (seen.has(key)) {
+        warnings.add("duplicidade", "Funções repetidas na mesma aba: foi usada a primeira remuneração encontrada.", row.linha);
+        continue;
+      }
+      seen.add(key);
+      const money = parseMoney(row.salario);
+      if (money.invalid || money.value === null) {
+        warnings.add("valor-invalido", "Funções sem remuneração válida ficaram sem valor.", row.linha);
+      }
+      const record: CargoSalario = { cargo, salario: money.invalid ? null : money.value, linha: row.linha };
+      if (grupo.origem) record.origem = grupo.origem;
+      records.push(record);
+      count += 1;
+    }
+    if (grupo.sheet) countsBySheet.push(grupo.origem ? { sheet: grupo.sheet, origem: grupo.origem, count } : { sheet: grupo.sheet, count });
+  }
+  if (records.length === 0) throw new ImportFileError("vazio", "Não encontramos funções nesta tabela salarial.");
+  return { kind: "salarial", fileName, records, countsBySheet, warnings: warnings.list() };
+}
+
+const MISSING = ["Função (ou Cargo)", "Remuneração (ou Salário)"];
 
 /** Lê a tabela salarial em CSV (UTF-8 ou windows-1252). */
 export function parseTabelaSalarialCsv(buffer: ArrayBuffer, fileName: string): ImportResult<CargoSalario> {
@@ -73,12 +87,12 @@ export function parseTabelaSalarialCsv(buffer: ArrayBuffer, fileName: string): I
   const header = (table[0] ?? []).map((cell) => normalizeHeader(String(cell)));
   const cargoAt = columnIndex(header, CARGO_ALIASES);
   const salarioAt = columnIndex(header, SALARIO_ALIASES);
-  const rows = table.slice(1).map((cells, index) => ({
+  const rows: LinhaSalarial[] = table.slice(1).map((cells, index) => ({
     cargo: String(cells[cargoAt] ?? ""),
     salario: cells[salarioAt] === undefined ? null : String(cells[salarioAt]),
     linha: headerIndex + index + 2,
   }));
-  return finish(fileName, rows);
+  return finish(fileName, [{ rows }]);
 }
 
 function findSalarialHeaderRow(worksheet: Worksheet): number {
@@ -89,30 +103,42 @@ function findSalarialHeaderRow(worksheet: Worksheet): number {
   return -1;
 }
 
-/** Procura a primeira aba com cabeçalho de tabela salarial. */
-export function findSalarialSheet(workbook: LoadedWorkbook): { worksheet: Worksheet; headerRow: number } | null {
+/** Abas com cabeçalho de tabela salarial, na ordem da pasta de trabalho. */
+export function findSalarialSheets(workbook: LoadedWorkbook): { worksheet: Worksheet; headerRow: number }[] {
+  const found: { worksheet: Worksheet; headerRow: number }[] = [];
   for (const worksheet of orderedSheets(workbook)) {
     if (worksheet.actualRowCount === 0) continue;
     const headerRow = findSalarialHeaderRow(worksheet);
-    if (headerRow > 0) return { worksheet, headerRow };
+    if (headerRow > 0) found.push({ worksheet, headerRow });
   }
-  return null;
+  return found;
 }
 
-/** Lê a tabela salarial de uma pasta de trabalho XLSX/XLSM já carregada (macros nunca são executadas). */
+/** Primeira aba com cabeçalho de tabela salarial (usada para reconhecer o tipo do arquivo). */
+export function findSalarialSheet(workbook: LoadedWorkbook): { worksheet: Worksheet; headerRow: number } | null {
+  return findSalarialSheets(workbook)[0] ?? null;
+}
+
+/**
+ * Lê a tabela salarial de uma pasta de trabalho XLSX/XLSM já carregada (macros nunca são executadas).
+ * Todas as abas com Função/Remuneração (ou Cargo/Salário) são lidas; a aba define a origem
+ * (Comissionado ou Terceirizado), e a mesma função pode ter remunerações diferentes em cada aba.
+ */
 export function parseTabelaSalarialWorkbook(workbook: LoadedWorkbook, fileName: string): ImportResult<CargoSalario> {
-  const found = findSalarialSheet(workbook);
-  if (!found) throw new ImportFileError("cabecalho", "Não encontramos as colunas da tabela salarial.", MISSING);
-  const { worksheet, headerRow } = found;
-  const header = rowTexts(worksheet, headerRow).map((cell) => cell ?? "");
-  const cargoAt = columnIndex(header, CARGO_ALIASES);
-  const salarioAt = columnIndex(header, SALARIO_ALIASES);
-  const rows: { cargo: string; salario: string | number | null; linha: number }[] = [];
-  for (let rowNumber = headerRow + 1; rowNumber <= worksheet.rowCount; rowNumber += 1) {
-    const row = worksheet.getRow(rowNumber);
-    const cargo = readCell(row.getCell(cargoAt)).value;
-    const salario = readCell(row.getCell(salarioAt)).value;
-    rows.push({ cargo: cargo === null ? "" : String(cargo), salario, linha: rowNumber });
-  }
-  return finish(fileName, rows, worksheet.name);
+  const abas = findSalarialSheets(workbook);
+  if (abas.length === 0) throw new ImportFileError("cabecalho", "Não encontramos as colunas da tabela salarial.", MISSING);
+  const grupos = abas.map(({ worksheet, headerRow }, posicao) => {
+    const header = rowTexts(worksheet, headerRow).map((cell) => cell ?? "");
+    const cargoAt = columnIndex(header, CARGO_ALIASES);
+    const salarioAt = columnIndex(header, SALARIO_ALIASES);
+    const rows: LinhaSalarial[] = [];
+    for (let rowNumber = headerRow + 1; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+      const row = worksheet.getRow(rowNumber);
+      const cargo = readCell(row.getCell(cargoAt)).value;
+      const salario = readCell(row.getCell(salarioAt)).value;
+      rows.push({ cargo: cargo === null ? "" : String(cargo), salario, linha: rowNumber });
+    }
+    return { rows, sheet: worksheet.name, origem: origemDaAba(worksheet.name, posicao, abas.length) };
+  });
+  return finish(fileName, grupos);
 }

@@ -39,7 +39,7 @@ const CARD: Record<ImportKind, { title: string; hint: string; accept: string; ty
   },
   salarial: {
     title: "Tabela salarial",
-    hint: "Arquivo com as colunas Cargo e Salário, um cargo por linha.",
+    hint: "Excel com as abas Comissionado e Terceirizado, colunas Função e Remuneração (ou Cargo e Salário), uma função por linha.",
     accept: ".csv,.xlsx,.xlsm",
     types: ".csv, .xlsx ou .xlsm",
   },

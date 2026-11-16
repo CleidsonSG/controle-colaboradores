@@ -322,7 +322,7 @@ export default function PainelCargos() {
             <BadgeDollarSign aria-hidden="true" />
             <AlertTitle>Falta a tabela salarial</AlertTitle>
             <AlertDescription>
-              <p>Sem ela, o painel só conta servidores. Importe um arquivo com as colunas Cargo e Salário para calcular custos e vagas livres.</p>
+              <p>Sem ela, o painel só conta servidores. Importe a tabela salarial (colunas Função e Remuneração) para calcular custos e vagas livres.</p>
               <div className="pt-1">
                 <Button asChild size="sm" variant="outline">
                   <Link href="/import">Importar tabela salarial</Link>

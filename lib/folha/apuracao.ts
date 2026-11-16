@@ -63,7 +63,9 @@ export function apurar(
   referencia: string = hojeIso(),
 ): Apuracao {
   const salarios = new Map<string, { nome: string; salario: number | null }>();
+  // Servidores do e-Cidade são comissionados: a aba Terceirizado da tabela salarial não entra aqui.
   for (const linha of tabela ?? []) {
+    if (linha.origem === "Terceirizado") continue;
     const chave = chaveCargo(linha.cargo);
     if (!salarios.has(chave)) {
       salarios.set(chave, { nome: linha.cargo, salario: linha.salario === null ? null : Math.round(linha.salario * 100) });

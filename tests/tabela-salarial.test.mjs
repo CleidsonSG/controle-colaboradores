@@ -43,3 +43,29 @@ test("XLSX da tabela salarial é reconhecido e lido", async () => {
   assert.deepEqual(r.records.map((x) => x.salario), [6800, 5400]);
   assert.deepEqual(r.countsBySheet, [{ sheet: "Salários", count: 2 }]);
 });
+
+test("XLSX com abas Comissionado e Terceirizado: lê as duas, com origem e Função/Remuneração", async () => {
+  const wb = new ExcelJS.Workbook();
+  const com = wb.addWorksheet("Comissionado");
+  com.addRow(["CARGO", "SALÁRIO"]);
+  com.addRow(["AGENTE EDUCACIONAL", "R$ 1.978,55"]);
+  com.addRow(["ASSESSOR 1 - AS 1", 6812.77]);
+  const ter = wb.addWorksheet("Terceirizado");
+  ter.addRow(["FUNÇÃO", "REMUNERAÇÃO"]);
+  ter.addRow(["AGENTE EDUCACIONAL", "R$ 6.780,60"]);
+  ter.addRow(["ARQUITETO", 12307.69]);
+  const buf = await wb.xlsx.writeBuffer();
+  const r = await importFile(new File([buf], "tabela.xlsx"));
+  assert.equal(r.kind, "salarial");
+  assert.deepEqual(r.records.map((x) => [x.origem, x.cargo, x.salario]), [
+    ["Comissionado", "AGENTE EDUCACIONAL", 1978.55],
+    ["Comissionado", "ASSESSOR 1 - AS 1", 6812.77],
+    ["Terceirizado", "AGENTE EDUCACIONAL", 6780.6],
+    ["Terceirizado", "ARQUITETO", 12307.69],
+  ]);
+  assert.deepEqual(r.countsBySheet, [
+    { sheet: "Comissionado", origem: "Comissionado", count: 2 },
+    { sheet: "Terceirizado", origem: "Terceirizado", count: 2 },
+  ]);
+  assert.deepEqual(r.warnings, []);
+});
