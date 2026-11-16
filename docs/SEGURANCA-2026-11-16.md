@@ -58,7 +58,30 @@ Escopo: versão com login Supabase (branch `feat/frontend-design-skill`, HEAD `3
 - Falta aviso de privacidade (finalidade, base legal, operador Supabase, contato) e definição de retenção — encaminhar ao `product-owner`.
 - Confirmar região do projeto Supabase (`sa-east-1` recomendada).
 
-## Reteste exigido para liberar
+## Reteste de A1 (2026-11-16, commit `a5ae4f9`) — RESOLVIDO
+
+Veredito do reteste: **APROVADO** (A1 fechado; A2/A3/baixos continuam como pendências não bloqueantes).
+
+| Verificação | Resultado |
+|---|---|
+| `GET /auth/v1/settings` (anon) | `mailer_autoconfirm: false` (Confirm email ligado) |
+| `POST /rest/v1/rpc/aplicar_convite` com `Content-Profile: private` | `406 PGRST106` (só `public` e `graphql_public` expostos) |
+| Sonda anon nas 4 tabelas e RPC `is_*` (orquestrador) | 401/42501 |
+| Revisão do diff de `supabase/schema.sql` | ver abaixo |
+
+- O perfil nasce sempre `pendente`/`usuario`. O convite só é aplicado com `email_confirmed_at` **e** `confirmation_sent_at` preenchidos. Assim, a autoconfirmação (que não envia link) não consome convite mesmo que a opção seja desligada de novo.
+- O gatilho `ao_confirmar_email` só dispara na transição `null → preenchido` de `email_confirmed_at`. O usuário não grava em `auth.users` (o schema `auth` não está exposto), e a troca de e-mail de uma conta já confirmada não passa por essa transição. Logo, não dá para contornar trocando o e-mail para um convidado.
+- `private.aplicar_convite`: schema sem `usage` para `public/anon/authenticated`, EXECUTE revogado, `search_path = ''` e nomes qualificados. Só altera perfis `pendente` e é idempotente (`for update` no convite).
+- As funções de gatilho em `public` retornam `trigger` e não podem ser chamadas como RPC.
+- Bootstrap (`insert ... from auth.users ... 'aprovado' on conflict do nothing`): continua aprovando só usuários sem perfil, ou seja, os anteriores ao gatilho. Isso é aceitável enquanto o cadastro público e o gatilho existirem juntos. Não rode o `schema.sql` depois de desativar o gatilho.
+- Os baixos de `search_path` e `(select auth.uid())` também foram resolvidos.
+
+**Pendências deste reteste (não bloqueiam):**
+1. Contas criadas enquanto a autoconfirmação estava ligada não são reavaliadas. O admin deve conferir no SQL Editor se todos os perfis `aprovado` e os convites com `usado_em` preenchido são esperados, e bloquear o que não reconhecer.
+2. A3 (pré-cadastro com e-mail convidado) continua médio. Orientar o convidado a usar "Esqueci a senha" no 1º acesso, ou migrar o convite para `inviteUserByEmail` em Edge Function.
+3. Usuários convidados pelo painel ("Invite user") podem ficar pendentes (sem `confirmation_sent_at`). Nesse caso, o admin aprova manualmente.
+
+## Reteste exigido para liberar (original)
 1. `GET https://<ref>.supabase.co/auth/v1/settings` (apikey anon) → `mailer_autoconfirm: false`.
 2. Se A1.2 for aplicada: novo cadastro com e-mail convidado não confirmado → perfil `pendente` até a confirmação.
 3. Repetir a sonda anon das 4 tabelas (deve continuar 401/42501).
