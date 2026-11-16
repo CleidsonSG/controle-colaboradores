@@ -18,6 +18,7 @@ import {
   ShieldCheck,
   Sun,
   Upload,
+  UserCog,
   Users,
   Wallet,
   X,
@@ -28,13 +29,14 @@ import { Button } from "@/components/ui/button";
 import { storageMode } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 
-const navigation: { label: string; href: string; icon: LucideIcon }[] = [
+const navigation: { label: string; href: string; icon: LucideIcon; adminOnly?: boolean }[] = [
   { label: "Painel de cargos", href: "/", icon: LayoutGrid },
   { label: "Funcionários", href: "/employees", icon: Users },
   { label: "Orçamento", href: "/budget", icon: Wallet },
   { label: "Importar Dados", href: "/import", icon: Upload },
   { label: "Estatísticas de Cargo", href: "/statistics", icon: ChartColumn },
   { label: "Manutenção de Cargos", href: "/positions", icon: ClipboardList },
+  { label: "Usuários", href: "/users", icon: UserCog, adminOnly: true },
   { label: "Configurações", href: "/settings", icon: Settings },
   { label: "Ajuda", href: "/help", icon: CircleHelp },
 ];
@@ -130,11 +132,11 @@ function ThemeSwitch() {
 }
 
 function UserMenu() {
-  const { email, signOut } = useAuth();
+  const { email, nome, signOut } = useAuth();
   if (!signOut) return null;
   return (
     <div className="flex items-center gap-2">
-      <span className="hidden max-w-48 truncate text-sm text-muted-foreground xl:inline" title={email ?? undefined}>{email}</span>
+      <span className="hidden max-w-48 truncate text-sm text-muted-foreground xl:inline" title={email ?? undefined}>{nome ?? email}</span>
       <Button variant="ghost" size="sm" type="button" onClick={() => void signOut()}>
         <LogOut aria-hidden="true" />
         <span className="hidden sm:inline">Sair</span>
@@ -162,6 +164,7 @@ function useIsMobile(): boolean {
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const { isAdmin } = useAuth();
   const current = pathname.replace(/\/+$/, "") || "/";
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
@@ -220,7 +223,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </span>
         </Link>
         <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3" aria-label="Navegação principal">
-          {navigation.map((item) => {
+          {navigation.filter((item) => !item.adminOnly || isAdmin).map((item) => {
             const active = current === item.href;
             const Icon = item.icon;
             return (
