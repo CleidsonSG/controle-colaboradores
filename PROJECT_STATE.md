@@ -4,7 +4,7 @@
 **Pasta:** `Controle_Colaboradores`  
 **Plano:** [controle-colaboradores.md](./controle-colaboradores.md)
 
-## 2026-11-17: segurança A2/A3 + LGPD (branch `fix/seguranca-lgpd`, commit `e852c9c`, NÃO publicado)
+## 2026-11-17: segurança A2/A3 + LGPD (branch `fix/seguranca-lgpd`, commit `e852c9c`; PUBLICADO em 2026-11-17 como `9e950e0`, deployment success, HTTP 200)
 - A2: só admin grava `datasets`/`configuracoes` (RLS); interface somente leitura para não admin. A3: convite pela Edge Function `supabase/functions/convidar-usuario` (`inviteUserByEmail`); convite só aprova conta criada por convite, com e-mail confirmado e sem senha prévia. Reteste de segurança APROVADO (seção em `docs/SEGURANCA-2026-11-16.md`).
 - LGPD: rota `/privacidade` (contato do encarregado = placeholder em `lib/privacidade.ts`).
 - **Antes/junto da publicação o usuário precisa:** rodar `supabase/schema.sql` de novo no SQL Editor e implantar a função `convidar-usuario` (Verify JWT ligado) — ver `docs/SUPABASE.md`.
