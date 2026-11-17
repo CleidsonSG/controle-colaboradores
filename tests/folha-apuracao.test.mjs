@@ -10,12 +10,12 @@ const s = (matricula, descricaoCargo, extra = {}) => ({
   lotacao: "Gabinete",
   admissao: "2020-01-01",
   rescisao: null,
-  comissionado: false,
+  comissionado: true,
   ...extra,
 });
 
 const servidores = [
-  s("1", "ASSESSOR 1 - AS 1", { comissionado: true }),
+  s("1", "ASSESSOR 1 - AS 1"),
   s("2", "Assessor 1 - AS 1"),
   s("3", "ASSESSOR 6 - AS 6"),
   s("4", "PROFESSOR"),
@@ -34,7 +34,6 @@ test("conta servidores ativos por cargo, ignorando caixa e acentos", () => {
   const a = apurar(servidores, tabela, 10_000_000, REF);
   const por = Object.fromEntries(a.cargos.map((c) => [c.chave, c]));
   assert.equal(por["assessor 1 - as 1"].servidores, 2);
-  assert.equal(por["assessor 1 - as 1"].comissionados, 1);
   assert.equal(por["assessor 6 - as 6"].servidores, 2, "rescisão futura ainda ocupa vaga");
   assert.equal(por["professor"].servidores, 1);
   assert.equal(por["sem cargo informado"].nome, SEM_CARGO);
@@ -94,4 +93,19 @@ test("apuração do e-Cidade usa só a aba Comissionado da tabela salarial", asy
   ];
   const a = apurar([servidor], tabela, null, "2026-01-01");
   assert.deepEqual(a.cargos.map((c) => [c.nome, c.salario]), [["AGENTE EDUCACIONAL", 197855]]);
+});
+
+test("Painel conta só comissionados ativos; os demais ativos viram aviso com a quantidade", () => {
+  const lista = [
+    s("1", "ASSESSOR 1 - AS 1"),
+    s("2", "ASSESSOR 1 - AS 1", { rescisao: "2025-01-01" }),
+    s("3", "ESTAGIARIO", { comissionado: false }),
+    s("4", "ESTAGIARIO", { comissionado: false }),
+    s("5", "ESTAGIARIO", { comissionado: false, rescisao: "2025-01-01" }),
+  ];
+  const a = apurar(lista, tabela, null, REF);
+  assert.equal(a.servidoresAtivos, 1);
+  assert.equal(a.desligados, 1);
+  assert.equal(a.foraDaContagem, 2, "só ativos não comissionados");
+  assert.ok(!a.cargos.some((c) => c.chave === "estagiario"));
 });

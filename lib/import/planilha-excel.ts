@@ -3,6 +3,10 @@ import { matriculaToText, normalizeHeader, parseMoney, WarningCollector } from "
 import { ImportFileError, type ColaboradorPlanilha, type ImportResult, type Origem } from "./types.ts";
 
 const SHEET_ORIGINS: Origem[] = ["Comissionado", "Terceirizado"];
+const SHEET_NAMES: Record<Origem, string> = { Comissionado: "cadastro_com", Terceirizado: "cadastro_ter" };
+const AUX_SHEET = "dados";
+/** Texto fixo que o cadastro usa no lugar da matrícula dos terceirizados: não identifica ninguém. */
+const MATRICULA_PLACEHOLDER = "terceirizada";
 const FALLBACK_HEADER_ROW = 2;
 const MAX_HEADER_SCAN = 15;
 
@@ -85,7 +89,28 @@ export async function loadWorkbook(buffer: ArrayBuffer) {
   return workbook;
 }
 
-/** Lê as duas primeiras abas (por ordem) da planilha XLSX/XLSM como dados; macros nunca são executadas. */
+/**
+ * Escolhe a aba de cada origem: pelo nome (CADASTRO_COM / CADASTRO_TER) quando existir; senão, pela posição
+ * (1ª = Comissionados, 2ª = Terceirizados). A aba auxiliar DADOS nunca é usada.
+ */
+export function pickCadastroSheets(workbook: LoadedWorkbook): { worksheet: Worksheet; origem: Origem }[] {
+  const candidates = orderedSheets(workbook).filter((sheet) => normalizeHeader(sheet.name) !== AUX_SHEET);
+  const byName = new Map<Origem, Worksheet>();
+  for (const origem of SHEET_ORIGINS) {
+    const found = candidates.find((sheet) => normalizeHeader(sheet.name) === SHEET_NAMES[origem]);
+    if (found) byName.set(origem, found);
+  }
+  const used = new Set(byName.values());
+  const rest = candidates.filter((sheet) => !used.has(sheet));
+  const picked: { worksheet: Worksheet; origem: Origem }[] = [];
+  for (const origem of SHEET_ORIGINS) {
+    const worksheet = byName.get(origem) ?? rest.shift();
+    if (worksheet) picked.push({ worksheet, origem });
+  }
+  return picked;
+}
+
+/** Lê as abas de comissionados e terceirizados da planilha XLSX/XLSM como dados; macros nunca são executadas. */
 export async function parsePlanilhaWorkbook(buffer: ArrayBuffer, fileName: string): Promise<ImportResult<ColaboradorPlanilha>> {
   if (buffer.byteLength === 0) throw new ImportFileError("vazio", "O arquivo está vazio.");
   return parsePlanilhaFromWorkbook(await loadWorkbook(buffer), fileName);
@@ -101,15 +126,14 @@ export function orderedSheets(workbook: LoadedWorkbook): Worksheet[] {
 
 /** Mesmo que parsePlanilhaWorkbook, a partir de uma pasta de trabalho já carregada. */
 export function parsePlanilhaFromWorkbook(workbook: LoadedWorkbook, fileName: string): ImportResult<ColaboradorPlanilha> {
-  const sheets = orderedSheets(workbook).slice(0, SHEET_ORIGINS.length);
+  const sheets = pickCadastroSheets(workbook);
   if (sheets.length === 0) throw new ImportFileError("vazio", "A planilha não tem abas.");
 
   const warnings = new WarningCollector();
   const records: ColaboradorPlanilha[] = [];
   const countsBySheet: ImportResult<ColaboradorPlanilha>["countsBySheet"] = [];
 
-  sheets.forEach((worksheet, sheetIndex) => {
-    const origem = SHEET_ORIGINS[sheetIndex];
+  sheets.forEach(({ worksheet, origem }) => {
     let count = 0;
     if (worksheet.rowCount > 0 && worksheet.actualRowCount > 0) {
       const headerRow = findHeaderRow(worksheet);
@@ -163,11 +187,13 @@ export function parsePlanilhaFromWorkbook(workbook: LoadedWorkbook, fileName: st
 
   const origensPorMatricula = new Map<string, Set<Origem>>();
   for (const record of records) {
+    if (normalizeHeader(record.matricula) === MATRICULA_PLACEHOLDER) continue;
     const set = origensPorMatricula.get(record.matricula) ?? new Set<Origem>();
     set.add(record.origem);
     origensPorMatricula.set(record.matricula, set);
   }
   for (const record of records) {
+    if (normalizeHeader(record.matricula) === MATRICULA_PLACEHOLDER) continue;
     if ((origensPorMatricula.get(record.matricula)?.size ?? 0) > 1) {
       record.possivelDuplicidade = true;
       warnings.add(

@@ -2,7 +2,7 @@ import Papa from "papaparse";
 import type { Worksheet } from "exceljs";
 import { orderedSheets, readCell, rowTexts, type LoadedWorkbook } from "./planilha-excel.ts";
 import { decodeText, detectDelimiter, normalizeHeader, parseMoney, WarningCollector } from "./text.ts";
-import { ImportFileError, type CargoSalario, type ImportResult, type Origem } from "./types.ts";
+import { ImportFileError, type CargoSalario, type ImportResult, type ImportWarning, type Origem } from "./types.ts";
 
 const MAX_HEADER_SCAN = 30;
 const CARGO_ALIASES = ["funcao", "cargo", "descricao do cargo", "descricao cargo"];
@@ -37,41 +37,49 @@ function origemDaAba(nome: string, posicao: number, total: number): Origem | und
   return posicao === 0 ? "Comissionado" : posicao === 1 ? "Terceirizado" : undefined;
 }
 
-/** Junta as linhas lidas, avisando sobre funções repetidas (vale a primeira de cada aba) e remunerações inválidas. */
+/** Junta as linhas lidas, avisando sobre funções repetidas (vale a primeira de cada aba), valores divergentes e funções sem remuneração. */
 function finish(fileName: string, grupos: GrupoSalarial[]): ImportResult<CargoSalario> {
-  const warnings = new WarningCollector();
+  const warnings: ImportWarning[] = [];
   const records: CargoSalario[] = [];
   const countsBySheet: ImportResult<CargoSalario>["countsBySheet"] = [];
   for (const grupo of grupos) {
-    const seen = new Set<string>();
+    const collector = new WarningCollector();
+    const seen = new Map<string, number | null>();
     let count = 0;
     for (const row of grupo.rows) {
       const cargo = row.cargo.trim();
       if (cargo === "") {
         if (row.salario !== null && String(row.salario).trim() !== "") {
-          warnings.add("linha-ignorada", "Linhas sem função foram ignoradas.", row.linha);
+          collector.add("linha-ignorada", "Linhas sem função foram ignoradas.", row.linha);
         }
         continue;
       }
       const key = normalizeHeader(cargo);
+      const money = parseMoney(row.salario);
+      const salario = money.invalid ? null : money.value;
       if (seen.has(key)) {
-        warnings.add("duplicidade", "Funções repetidas na mesma aba: foi usada a primeira remuneração encontrada.", row.linha);
+        const first = seen.get(key) ?? null;
+        if (salario !== null && first !== null && salario !== first) {
+          collector.add("valores-divergentes", "Funções repetidas com valores diferentes: foi usada a primeira remuneração encontrada.", row.linha);
+        } else {
+          collector.add("duplicidade", "Funções repetidas na mesma aba: foi usada a primeira remuneração encontrada.", row.linha);
+        }
         continue;
       }
-      seen.add(key);
-      const money = parseMoney(row.salario);
-      if (money.invalid || money.value === null) {
-        warnings.add("valor-invalido", "Funções sem remuneração válida ficaram sem valor.", row.linha);
-      }
-      const record: CargoSalario = { cargo, salario: money.invalid ? null : money.value, linha: row.linha };
+      seen.set(key, salario);
+      if (money.invalid) collector.add("valor-invalido", "Remunerações inválidas: as funções ficaram sem valor.", row.linha);
+      else if (salario === null) collector.add("sem-valor", "Funções sem remuneração na tabela: ficam sem valor.", row.linha);
+      const record: CargoSalario = { cargo, salario, linha: row.linha };
       if (grupo.origem) record.origem = grupo.origem;
       records.push(record);
       count += 1;
     }
+    const prefix = grupos.length > 1 && grupo.sheet ? `Aba ${grupo.sheet}: ` : "";
+    for (const warning of collector.list()) warnings.push({ ...warning, message: `${prefix}${warning.message}` });
     if (grupo.sheet) countsBySheet.push(grupo.origem ? { sheet: grupo.sheet, origem: grupo.origem, count } : { sheet: grupo.sheet, count });
   }
   if (records.length === 0) throw new ImportFileError("vazio", "Não encontramos funções nesta tabela salarial.");
-  return { kind: "salarial", fileName, records, countsBySheet, warnings: warnings.list() };
+  return { kind: "salarial", fileName, records, countsBySheet, warnings };
 }
 
 const MISSING = ["Função (ou Cargo)", "Remuneração (ou Salário)"];

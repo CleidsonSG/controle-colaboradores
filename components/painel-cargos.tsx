@@ -35,7 +35,7 @@ const ORDENS: { value: Ordem; label: string }[] = [
   { value: "nome", label: "Nome (A–Z)" },
 ];
 const FILTROS: { value: Filtro; label: string }[] = [
-  { value: "todos", label: "Todos os cargos" },
+  { value: "todos", label: "Todas as funções" },
   { value: "ocupados", label: "Com servidores" },
   { value: "sem-salario", label: "Fora da tabela salarial" },
   { value: "sem-servidores", label: "Na tabela, sem servidores" },
@@ -146,11 +146,11 @@ function Indicadores({ apuracao, temTabela }: { apuracao: Apuracao; temTabela: b
   return (
     <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border lg:grid-cols-4 [&>*]:bg-card" aria-label="Indicadores da folha">
       <Indicador
-        rotulo="Servidores ativos"
+        rotulo="Comissionados ativos"
         valor={inteiro(apuracao.servidoresAtivos)}
         nota={apuracao.desligados > 0 ? `${plural(apuracao.desligados, "com rescisão não contado", "com rescisão não contados")}` : "Vagas ocupadas"}
       />
-      <Indicador rotulo="Cargos ocupados" valor={inteiro(comServidores)} nota={temTabela ? `${plural(naTabela, "cargo", "cargos")} na tabela salarial` : "Tabela salarial não importada"} />
+      <Indicador rotulo="Funções ocupadas" valor={inteiro(comServidores)} nota={temTabela ? `${plural(naTabela, "função", "funções")} na tabela salarial` : "Tabela salarial não importada"} />
       <Indicador
         largo
         rotulo="Custo da folha"
@@ -196,9 +196,8 @@ function CartaoCargo({ cargo, teto }: { cargo: CargoApurado; teto: number | null
         <div className="flex flex-col gap-0.5">
           <p className="flex items-baseline gap-2">
             <span className="text-3xl font-semibold tracking-tight tabular-nums">{inteiro(cargo.servidores)}</span>
-            <span className="text-sm text-muted-foreground">{cargo.servidores === 1 ? "servidor (vaga ocupada)" : "servidores (vagas ocupadas)"}</span>
+            <span className="text-sm text-muted-foreground">{cargo.servidores === 1 ? "servidor comissionado (vaga ocupada)" : "servidores comissionados (vagas ocupadas)"}</span>
           </p>
-          {cargo.comissionados > 0 && <p className="text-sm text-muted-foreground">{plural(cargo.comissionados, "comissionado", "comissionados")} (282/16)</p>}
         </div>
 
         <dl className="grid grid-cols-2 gap-3 text-sm">
@@ -269,7 +268,7 @@ export default function PainelCargos() {
     <header className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
       <div className="flex max-w-2xl flex-col gap-1.5">
         <h1 className="text-2xl font-semibold tracking-tight">Painel de cargos</h1>
-        <p className="text-muted-foreground">Servidores por cargo, custo da folha e vagas livres, apurados a partir do relatório do e-Cidade e da tabela salarial.</p>
+        <p className="text-muted-foreground">Servidores comissionados por função, custo da folha e vagas livres, apurados a partir do relatório do e-Cidade (Descrição do cargo = função; Nome = servidor) e da tabela salarial.</p>
       </div>
       {pronto && <TetoFolha key={pronto.settings.tetoFolha ?? "vazio"} teto={pronto.settings.tetoFolha} onSalvar={salvarTeto} />}
     </header>
@@ -305,7 +304,7 @@ export default function PainelCargos() {
           </span>
           <div className="flex max-w-md flex-col gap-1">
             <p className="font-medium">Importe o relatório do e-Cidade para montar o painel</p>
-            <p className="text-sm text-muted-foreground">Os servidores são contados pela coluna Descrição do cargo. Importe também a tabela salarial para calcular custos e vagas livres.</p>
+            <p className="text-sm text-muted-foreground">Só os servidores comissionados (marca 282/16) são contados, pela coluna Descrição do cargo (função). Importe também a tabela salarial para calcular custos e vagas livres.</p>
           </div>
           <Button asChild>
             <Link href="/import">Importar arquivos</Link>
@@ -316,6 +315,7 @@ export default function PainelCargos() {
   }
 
   const temTabela = Boolean(dados.salarial);
+  const relatorioAviso = dados.ecidade?.warnings.find((aviso) => aviso.code === "relatorio")?.message ?? null;
   const visiveisAgora = visiveis.slice(0, limite);
 
   return (
@@ -338,6 +338,20 @@ export default function PainelCargos() {
             </AlertDescription>
           </Alert>
         )}
+        {relatorioAviso && (
+          <Alert variant="warning">
+            <TriangleAlert aria-hidden="true" />
+            <AlertTitle>Confira o relatório do e-Cidade importado</AlertTitle>
+            <AlertDescription>{relatorioAviso}</AlertDescription>
+          </Alert>
+        )}
+        {apuracao.foraDaContagem > 0 && (
+          <Alert variant="info">
+            <Info aria-hidden="true" />
+            <AlertTitle>{plural(apuracao.foraDaContagem, "servidor ativo fora da contagem", "servidores ativos fora da contagem")}</AlertTitle>
+            <AlertDescription>O Painel conta só os comissionados (marca 282/16). Estagiários, contratos e outros vínculos do arquivo não entram nos números.</AlertDescription>
+          </Alert>
+        )}
         {apuracao.saldo !== null && apuracao.saldo < 0 && temTabela && (
           <Alert variant="destructive" role="alert">
             <CircleAlert aria-hidden="true" />
@@ -349,13 +363,13 @@ export default function PainelCargos() {
           <Alert variant="warning">
             <TriangleAlert aria-hidden="true" />
             <AlertTitle>
-              {plural(apuracao.cargosSemSalario, "cargo não está", "cargos não estão")} na tabela salarial ({plural(apuracao.servidoresSemSalario, "servidor", "servidores")})
+              {plural(apuracao.cargosSemSalario, "função não está", "funções não estão")} na tabela salarial ({plural(apuracao.servidoresSemSalario, "servidor", "servidores")})
             </AlertTitle>
             <AlertDescription>
-              <p>Esses cargos ficam fora do custo da folha. Confira se o nome do cargo está escrito igual nos dois arquivos.</p>
+              <p>Essas funções ficam fora do custo da folha. Confira se o nome da função está escrito igual nos dois arquivos.</p>
               <div className="pt-1">
                 <Button size="sm" variant="outline" type="button" onClick={() => { setFiltro("sem-salario"); setLimite(PAGINA); }}>
-                  Ver esses cargos
+                  Ver essas funções
                 </Button>
               </div>
             </AlertDescription>
@@ -365,7 +379,7 @@ export default function PainelCargos() {
 
       <section className="flex flex-col gap-4" aria-labelledby="cargos-titulo">
         <div className="flex flex-col gap-1">
-          <h2 id="cargos-titulo" className="text-lg font-semibold">Cargos</h2>
+          <h2 id="cargos-titulo" className="text-lg font-semibold">Funções</h2>
           {temTabela && apuracao.teto !== null && (
             <p className="flex max-w-prose items-start gap-1.5 text-sm text-muted-foreground">
               <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
@@ -376,7 +390,7 @@ export default function PainelCargos() {
 
         <div className="grid gap-3 rounded-lg border bg-card p-4 sm:grid-cols-[1fr_auto_auto]">
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium" htmlFor={buscaId}>Buscar cargo</label>
+            <label className="text-sm font-medium" htmlFor={buscaId}>Buscar função</label>
             <div className="relative">
               <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
               <Input
@@ -411,13 +425,13 @@ export default function PainelCargos() {
         </div>
 
         <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
-          {plural(visiveis.length, "cargo", "cargos")}
+          {plural(visiveis.length, "função", "funções")}
           {visiveis.length !== apuracao.cargos.length && ` de ${inteiro(apuracao.cargos.length)}`}
         </p>
 
         {visiveis.length === 0 ? (
           <div className="rounded-lg border border-dashed bg-card px-6 py-12 text-center text-sm text-muted-foreground">
-            Nenhum cargo encontrado com esses filtros.
+            Nenhuma função encontrada com esses filtros.
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">

@@ -12,7 +12,7 @@ test("CSV da tabela salarial: ; e R$, cargos repetidos e salário inválido", ()
   const r = parseTabelaSalarialCsv(enc(csv), "tabela.csv");
   assert.equal(r.kind, "salarial");
   assert.deepEqual(r.records.map((x) => [x.cargo, x.salario]), [["ASSESSOR 1 - AS 1", 8500], ["ASSESSOR 6 - AS 6", 2600], ["DIRETOR", null]]);
-  assert.deepEqual(r.warnings.map((w) => w.code).sort(), ["duplicidade", "valor-invalido"]);
+  assert.deepEqual(r.warnings.map((w) => w.code).sort(), ["valor-invalido", "valores-divergentes"]);
 });
 
 test("CSV sem as colunas Cargo e Salário é recusado", () => {
@@ -68,4 +68,25 @@ test("XLSX com abas Comissionado e Terceirizado: lê as duas, com origem e Funç
     { sheet: "Terceirizado", origem: "Terceirizado", count: 2 },
   ]);
   assert.deepEqual(r.warnings, []);
+});
+
+test("duplicada com mesmo valor = duplicidade; sem valor = aviso com contagem; aba nomeada no aviso", async () => {
+  const wb = new ExcelJS.Workbook();
+  const com = wb.addWorksheet("Comissionado");
+  com.addRow(["CARGO", "SALÁRIO"]);
+  com.addRow(["AS 1", 100]);
+  com.addRow(["AS 1", 100]);
+  const ter = wb.addWorksheet("Terceirizado");
+  ter.addRow(["FUNÇÃO", "REMUNERAÇÃO"]);
+  ter.addRow(["VIGIA", null]);
+  ter.addRow(["ROCADOR", null]);
+  ter.addRow(["SERVENTE", 2000]);
+  ter.addRow(["SERVENTE", 3000]);
+  const r = await importFile(new File([await wb.xlsx.writeBuffer()], "t.xlsx"));
+  const by = (code) => r.warnings.filter((w) => w.code === code);
+  assert.equal(by("duplicidade").length, 1);
+  assert.equal(by("valores-divergentes").length, 1);
+  assert.ok(by("valores-divergentes")[0].message.includes("Terceirizado"));
+  assert.equal(by("sem-valor")[0].rows.length, 2);
+  assert.equal(r.records.find((x) => x.cargo === "SERVENTE").salario, 2000);
 });

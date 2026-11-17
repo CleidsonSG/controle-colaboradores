@@ -5,7 +5,7 @@ export function toArrayBuffer(buf) {
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
 }
 
-const REPORT = ["Relatorio Ficticio de Servidores", "Prefeitura de Teste", "Emitido em 01/01/2026", ""];
+const REPORT = ["FUNCIONÁRIOS ADMITIDOS", "Prefeitura de Teste", "Emitido em 01/01/2026", ""];
 const HEADER = ["Matrícula", "Nome", "Descrição do cargo", "Lotação", "Admissão", "Rescisão", "PADRAO"];
 
 // U+0093 / U+0094 viram os bytes 0x93 / 0x94 em latin1 (aspas curvas do windows-1252).

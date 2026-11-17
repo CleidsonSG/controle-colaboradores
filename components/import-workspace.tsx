@@ -28,20 +28,20 @@ type ExistingInfo = { importedAt: string; count: number } | null;
 const KINDS: ImportKind[] = ["ecidade", "planilha", "salarial"];
 const CARD: Record<ImportKind, { title: string; hint: string; accept: string; types: string }> = {
   ecidade: {
-    title: "Servidores Comissionados (e-Cidade)",
-    hint: "Relatório exportado do e-Cidade.",
+    title: "Relatório do e-Cidade",
+    hint: "Relatório de funcionários admitidos (ou geral) exportado do e-Cidade. Vai para o Painel de Cargos, que conta só os comissionados (marca 282/16): Descrição do cargo = função e Nome = servidor.",
     accept: ".csv",
     types: ".csv",
   },
   planilha: {
-    title: "Terceirizados e Comissionados (Planilha)",
-    hint: "Planilha Excel com as abas de terceirizados e comissionados.",
+    title: "Cadastro funcional",
+    hint: "Planilha Excel com as abas CADASTRO_COM (comissionados) e CADASTRO_TER (terceirizados); a aba DADOS é ignorada. Vai para a tela Funcionários.",
     accept: ".xlsx,.xlsm",
     types: ".xlsx ou .xlsm",
   },
   salarial: {
     title: "Tabela salarial",
-    hint: "Excel com as abas Comissionado e Terceirizado, colunas Função e Remuneração (ou Cargo e Salário), uma função por linha.",
+    hint: "Excel com as abas Comissionado (Cargo e Salário) e Terceirizado (Função e Remuneração). A aba Comissionado vai para o Painel de Cargos e o Orçamento; a aba Terceirizado serve à conferência na tela Funcionários.",
     accept: ".csv,.xlsx,.xlsm",
     types: ".csv, .xlsx ou .xlsm",
   },
@@ -53,7 +53,18 @@ const WARNING_LABEL: Record<string, string> = {
   duplicidade: "Duplicidades",
   "valor-invalido": "Valores inválidos",
   "formula-sem-valor": "Fórmulas sem valor calculado",
+  relatorio: "Relatório inesperado",
+  "nao-comissionado": "Fora da contagem do Painel",
+  "valores-divergentes": "Valores diferentes",
+  "sem-valor": "Funções sem valor",
 };
+
+/** Mensagens que falam do arquivo todo (ou de registros) não mostram "N linhas". */
+function warningCount(code: string, count: number): string {
+  if (code === "relatorio") return "";
+  const unit = code === "nao-comissionado" ? ["registro", "registros"] : code === "sem-valor" ? ["função", "funções"] : ["linha", "linhas"];
+  return `(${formatCount(count)} ${count === 1 ? unit[0] : unit[1]})`;
+}
 
 const EMPTY_SLOTS: Record<ImportKind, Slot> = { ecidade: { status: "empty" }, planilha: { status: "empty" }, salarial: { status: "empty" } };
 const NO_EXISTING: Record<ImportKind, ExistingInfo> = { ecidade: null, planilha: null, salarial: null };
@@ -122,8 +133,9 @@ function ConfirmDialog({
 
 function ReadySummary({ result }: { result: AnyResult }) {
   const total = result.records.length;
-  const grouped = result.warnings.map((warning) => ({
-    key: warning.code,
+  const grouped = result.warnings.map((warning, index) => ({
+    key: `${warning.code}-${index}`,
+    code: warning.code,
     label: WARNING_LABEL[warning.code] ?? "Aviso",
     count: warning.rows.length,
     message: warning.message,
@@ -155,7 +167,7 @@ function ReadySummary({ result }: { result: AnyResult }) {
                 <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
                 <span>
                   <strong className="font-medium">{item.label}:</strong> {item.message}{" "}
-                  <span className="text-muted-foreground tabular-nums">({formatCount(item.count)} {item.count === 1 ? "linha" : "linhas"})</span>
+                  <span className="text-muted-foreground tabular-nums">{warningCount(item.code, item.count)}</span>
                 </span>
               </li>
             ))}
@@ -439,8 +451,8 @@ export default function ImportWorkspace() {
     }
   }
 
-  // Destino do botão "Ver em Funcionários": e-Cidade tem prioridade quando os dois foram importados.
-  const target = done?.kinds.includes("planilha") && !done.kinds.includes("ecidade") && !done.kinds.includes("salarial") ? "/employees/#planilha" : "/";
+  // Destino do botão: só o Cadastro funcional vai para Funcionários; e-Cidade e Tabela salarial alimentam o Painel de Cargos.
+  const target = done?.kinds.includes("planilha") && !done.kinds.includes("ecidade") && !done.kinds.includes("salarial") ? "/employees/" : "/";
   const targetLabel = target === "/" ? "Ver painel de cargos" : "Ver em Funcionários";
 
   return (
@@ -449,7 +461,8 @@ export default function ImportWorkspace() {
         <div className="flex max-w-2xl flex-col gap-1.5">
           <h1 className="text-2xl font-semibold tracking-tight">Importar arquivos</h1>
           <p className="text-muted-foreground">
-            Envie o CSV do e-Cidade, a planilha Excel e a tabela salarial. Pode soltar todos de uma vez: o tipo é reconhecido pelo conteúdo.
+            Cada arquivo alimenta uma parte do sistema: o relatório do e-Cidade (CSV) vai para o Painel de Cargos; o Cadastro funcional (planilha Excel) vai para Funcionários; a Tabela salarial vai para o Painel de Cargos e o Orçamento (aba Comissionado) e para a conferência dos terceirizados (aba Terceirizado).
+            Pode soltar todos de uma vez: o tipo é reconhecido pelo conteúdo.
             Na primeira importação os três são obrigatórios; depois, cada um pode ser reimportado sozinho.
             Depois da importação, o painel de cargos é calculado automaticamente.
           </p>
@@ -598,7 +611,7 @@ export default function ImportWorkspace() {
       <ConfirmDialog
         open={clearOpen}
         title="Limpar dados importados?"
-        description="Os três tipos de dados (e-Cidade, Planilha e Tabela salarial) serão apagados. O teto da folha informado é mantido. Essa ação não pode ser desfeita."
+        description="Os três tipos de dados (relatório do e-Cidade, Cadastro funcional e Tabela salarial) serão apagados. O teto da folha informado é mantido. Essa ação não pode ser desfeita."
         confirmLabel="Limpar tudo"
         destructive
         busy={clearing}

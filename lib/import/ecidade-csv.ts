@@ -24,6 +24,20 @@ function findHeaderLine(lines: string[]): number {
   return Math.min(FALLBACK_HEADER_INDEX, lines.length - 1);
 }
 
+const TITLE_LABEL = "Funcionários admitidos";
+
+/** Confere o título do relatório (linhas antes do cabeçalho): admitidos/geral é o esperado. */
+function reportTitleWarning(lines: string[]): string | null {
+  const title = lines.map((line) => normalizeHeader(line.replace(/[;,	]+/g, " "))).filter((line) => line !== "");
+  if (title.length === 0) return null;
+  const joined = title.join(" ");
+  if (joined.includes("demitidos")) {
+    return `Este relatório é de funcionários DEMITIDOS. O Painel de Cargos espera o relatório de ${TITLE_LABEL.toLowerCase()} (ou geral): a contagem de ativos ficará vazia ou incorreta.`;
+  }
+  if (joined.includes("admitidos") || joined.includes("geral")) return null;
+  return `O título deste relatório não indica "${TITLE_LABEL}" nem "Geral". Confira se é o relatório correto do e-Cidade.`;
+}
+
 /** Lê o relatório CSV do e-Cidade (UTF-8 ou windows-1252). */
 export function parseECidadeCsv(buffer: ArrayBuffer, fileName: string): ImportResult<ServidorECidade> {
   if (buffer.byteLength === 0) throw new ImportFileError("vazio", "O arquivo está vazio.");
@@ -41,6 +55,8 @@ export function parseECidadeCsv(buffer: ArrayBuffer, fileName: string): ImportRe
   }
 
   const warnings = new WarningCollector();
+  const titleWarning = reportTitleWarning(lines.slice(0, headerIndex));
+  if (titleWarning) warnings.add("relatorio", titleWarning, 1);
   const records: ServidorECidade[] = [];
   let declaredTotal: number | null = null;
   for (let index = 1; index < table.length; index += 1) {
@@ -65,6 +81,10 @@ export function parseECidadeCsv(buffer: ArrayBuffer, fileName: string): ImportRe
     if (admissao.invalid || rescisao.invalid) {
       warnings.add("data-invalida", "Datas inválidas foram deixadas em branco.", fileRow);
     }
+    const comissionado = raw.some((cell) => cell.includes(COMISSIONADO_MARK));
+    if (!comissionado) {
+      warnings.add("nao-comissionado", "Registros sem a marca 282/16 (não comissionados, como estagiários e contratos) ficam fora da contagem do Painel de Cargos.", fileRow);
+    }
     records.push({
       matricula,
       nome,
@@ -72,7 +92,7 @@ export function parseECidadeCsv(buffer: ArrayBuffer, fileName: string): ImportRe
       lotacao: pick(3),
       admissao: admissao.iso,
       rescisao: rescisao.iso,
-      comissionado: raw.some((cell) => cell.includes(COMISSIONADO_MARK)),
+      comissionado,
     });
   }
 

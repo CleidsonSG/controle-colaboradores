@@ -78,3 +78,31 @@ test("cabeçalho sem Matrícula/Servidor: erro cabecalho", async () => {
     (e) => e.code === "cabecalho" && e.missingColumns.length === 2,
   );
 });
+
+async function workbookWith(sheets) {
+  const { default: ExcelJS } = await import("exceljs");
+  const wb = new ExcelJS.Workbook();
+  for (const [name, rows] of sheets) {
+    const ws = wb.addWorksheet(name);
+    ws.addRow(["Matrícula", "Servidor", "Empresa/Secretaria", "Lotação", "Função", "Remuneração", "Alimentação", "Indicação"]);
+    for (const r of rows) ws.addRow(r);
+  }
+  return new Uint8Array(await wb.xlsx.writeBuffer()).buffer;
+}
+const ONE = (n) => [[n, "Pessoa " + n, "Org", "Lot", "Func", 1000, 100, ""]];
+
+test("abas escolhidas por nome mesmo fora de ordem; DADOS ignorada", async () => {
+  const r = await parsePlanilhaWorkbook(await workbookWith([["DADOS", ONE(1)], ["CADASTRO_TER", ONE(2)], ["CADASTRO_COM", ONE(3)]]), "p.xlsm");
+  assert.deepEqual(r.records.map((x) => [x.matricula, x.origem]).sort(), [["2", "Terceirizado"], ["3", "Comissionado"]]);
+  assert.deepEqual(r.countsBySheet.map((c) => c.sheet), ["CADASTRO_COM", "CADASTRO_TER"]);
+});
+test("sem os nomes: 1ª aba = Comissionado, 2ª = Terceirizado (DADOS pulada)", async () => {
+  const r = await parsePlanilhaWorkbook(await workbookWith([["DADOS", ONE(9)], ["Aba A", ONE(1)], ["Aba B", ONE(2)]]), "p.xlsx");
+  assert.deepEqual(r.records.map((x) => [x.matricula, x.origem]), [["1", "Comissionado"], ["2", "Terceirizado"]]);
+});
+test("matrícula TERCEIRIZADA (texto fixo) não gera duplicidade", async () => {
+  const ter = [["TERCEIRIZADA", "Pessoa X", "Emp", "Lot", "F", 1, 1, ""], ["TERCEIRIZADA", "Pessoa Y", "Emp", "Lot", "F", 1, 1, ""]];
+  const r = await parsePlanilhaWorkbook(await workbookWith([["CADASTRO_COM", ONE(1)], ["CADASTRO_TER", ter]]), "p.xlsx");
+  assert.equal(r.records.length, 3);
+  assert.ok(!r.records.some((x) => x.possivelDuplicidade));
+});

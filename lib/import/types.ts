@@ -36,7 +36,20 @@ export type ColaboradorPlanilha = {
 };
 
 export type ImportWarning = {
-  code: "linha-ignorada" | "data-invalida" | "valor-invalido" | "duplicidade" | "formula-sem-valor";
+  code:
+    | "linha-ignorada"
+    | "data-invalida"
+    | "valor-invalido"
+    | "duplicidade"
+    | "formula-sem-valor"
+    /** Relatório do e-Cidade de tipo inesperado (ex.: demitidos). */
+    | "relatorio"
+    /** Registros do e-Cidade sem a marca 282/16, fora da contagem do Painel. */
+    | "nao-comissionado"
+    /** Função repetida na tabela salarial com valores diferentes. */
+    | "valores-divergentes"
+    /** Função da tabela salarial sem remuneração. */
+    | "sem-valor";
   message: string;
   rows: number[];
 };

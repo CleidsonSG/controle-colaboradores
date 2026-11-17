@@ -21,7 +21,7 @@ test("decodeText: windows-1252 com byte 0x93", () => {
 test("decodeText: remove BOM", () => {
   const out = decodeText(csvUtf8Bom());
   assert.notEqual(out.charCodeAt(0), 0xfeff);
-  assert.ok(out.startsWith("Relatorio"));
+  assert.ok(out.startsWith("FUNCION"));
 });
 
 test("detectDelimiter", () => {

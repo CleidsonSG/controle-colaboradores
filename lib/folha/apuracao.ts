@@ -1,5 +1,5 @@
 /**
- * Apuração feita depois da importação: conta servidores por cargo (coluna "Descrição do cargo" do e-Cidade),
+ * Apuração feita depois da importação: conta servidores comissionados (marca 282/16) por função (coluna "Descrição do cargo" do e-Cidade),
  * cruza com a tabela salarial e calcula custo e vagas livres a partir do teto da folha.
  * Valores monetários em centavos.
  */
@@ -13,10 +13,8 @@ export type CargoApurado = {
   /** Nome normalizado, usado para cruzar com a tabela salarial. */
   chave: string;
   nome: string;
-  /** Servidores ativos no cargo = vagas ocupadas. */
+  /** Servidores comissionados ativos na função = vagas ocupadas. */
   servidores: number;
-  /** Quantos deles têm a marca 282/16 (comissionados). */
-  comissionados: number;
   /** Salário mensal em centavos (da tabela salarial); null = cargo fora da tabela ou sem valor. */
   salario: number | null;
   /** salário × servidores, em centavos; null sem salário. */
@@ -29,10 +27,12 @@ export type CargoApurado = {
 
 export type Apuracao = {
   cargos: CargoApurado[];
-  /** Servidores sem data de rescisão (ou com rescisão futura). */
+  /** Comissionados (282/16) sem data de rescisão (ou com rescisão futura). */
   servidoresAtivos: number;
-  /** Servidores com rescisão até a data de referência: não ocupam vaga. */
+  /** Comissionados com rescisão até a data de referência: não ocupam vaga. */
   desligados: number;
+  /** Ativos sem a marca 282/16 (estagiários, contratos etc.): fora da contagem. */
+  foraDaContagem: number;
   /** Soma de salário × servidores dos cargos com salário (centavos). */
   custoTotal: number;
   teto: number | null;
@@ -63,7 +63,7 @@ export function apurar(
   referencia: string = hojeIso(),
 ): Apuracao {
   const salarios = new Map<string, { nome: string; salario: number | null }>();
-  // Servidores do e-Cidade são comissionados: a aba Terceirizado da tabela salarial não entra aqui.
+  // O Painel usa a aba Comissionado da tabela salarial; a aba Terceirizado não entra aqui.
   for (const linha of tabela ?? []) {
     if (linha.origem === "Terceirizado") continue;
     const chave = chaveCargo(linha.cargo);
@@ -72,25 +72,29 @@ export function apurar(
     }
   }
 
-  const grupos = new Map<string, { nomes: Map<string, number>; servidores: number; comissionados: number }>();
+  const grupos = new Map<string, { nomes: Map<string, number>; servidores: number }>();
   let desligados = 0;
+  let foraDaContagem = 0;
   for (const servidor of servidores) {
+    if (!servidor.comissionado) {
+      if (estaAtivo(servidor, referencia)) foraDaContagem += 1;
+      continue;
+    }
     if (!estaAtivo(servidor, referencia)) {
       desligados += 1;
       continue;
     }
     const nome = servidor.descricaoCargo.trim() || SEM_CARGO;
     const chave = chaveCargo(nome);
-    const grupo = grupos.get(chave) ?? { nomes: new Map(), servidores: 0, comissionados: 0 };
+    const grupo = grupos.get(chave) ?? { nomes: new Map(), servidores: 0 };
     grupo.servidores += 1;
-    if (servidor.comissionado) grupo.comissionados += 1;
     grupo.nomes.set(nome, (grupo.nomes.get(nome) ?? 0) + 1);
     grupos.set(chave, grupo);
   }
 
   // Cargos da tabela salarial sem nenhum servidor também aparecem (0 ocupadas).
   for (const [chave, linha] of salarios) {
-    if (!grupos.has(chave)) grupos.set(chave, { nomes: new Map([[linha.nome, 0]]), servidores: 0, comissionados: 0 });
+    if (!grupos.has(chave)) grupos.set(chave, { nomes: new Map([[linha.nome, 0]]), servidores: 0 });
   }
 
   let custoTotal = 0;
@@ -101,7 +105,7 @@ export function apurar(
     const salario = tabelado?.salario ?? null;
     const custo = salario === null ? null : salario * grupo.servidores;
     if (custo !== null) custoTotal += custo;
-    return { chave, nome, servidores: grupo.servidores, comissionados: grupo.comissionados, salario, custo, naTabela: Boolean(tabelado) };
+    return { chave, nome, servidores: grupo.servidores, salario, custo, naTabela: Boolean(tabelado) };
   });
 
   const saldo = teto === null ? null : teto - custoTotal;
@@ -113,8 +117,9 @@ export function apurar(
   const semSalario = cargos.filter((cargo) => cargo.salario === null && cargo.servidores > 0);
   return {
     cargos,
-    servidoresAtivos: servidores.length - desligados,
+    servidoresAtivos: [...grupos.values()].reduce((soma, grupo) => soma + grupo.servidores, 0),
     desligados,
+    foraDaContagem,
     custoTotal,
     teto,
     saldo,

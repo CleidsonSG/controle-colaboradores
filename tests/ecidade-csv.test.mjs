@@ -69,3 +69,30 @@ test("rodapé TOTAL divergente gera aviso", () => {
   assert.equal(r.records.length, 5);
   assert.ok(r.warnings.some((w) => w.code === "linha-ignorada" && w.message.includes("9")));
 });
+
+const csvWith = (title, rows) =>
+  fx.toArrayBuffer(
+    Buffer.from(
+      [title, "PERÍODO 01/01/2026 ATÉ 17/11/2026", "", "", "Matrícula;Nome;Descrição do cargo;Lotação;Admissão;Rescisão;PADRAO;", ...rows].join("\r\n") + "\r\n",
+      "latin1",
+    ),
+  );
+const ROWS = ["1;Pessoa A;ASSESSOR 1;Gab;01/02/2026;;01-282/16;", "2;Pessoa B;ESTAGIARIO;Gab;01/02/2026;;1;", "3;Pessoa C;ASSESSOR 2;Gab;01/02/2026;;02-282/16;"];
+
+test("título ADMITIDOS ou GERAL: sem aviso de relatório", () => {
+  for (const title of ["FUNCIONÁRIOS ADMITIDOS", "RELATÓRIO GERAL"]) {
+    assert.ok(!parseECidadeCsv(csvWith(title, ROWS), "a.csv").warnings.some((w) => w.code === "relatorio"));
+  }
+});
+test("título DEMITIDOS ou desconhecido: aviso claro de relatório", () => {
+  const demitidos = parseECidadeCsv(csvWith("FUNCIONÁRIOS DEMITIDOS", ROWS), "a.csv");
+  assert.ok(demitidos.warnings.find((w) => w.code === "relatorio").message.includes("DEMITIDOS"));
+  const outro = parseECidadeCsv(csvWith("LISTA QUALQUER", ROWS), "a.csv");
+  assert.ok(outro.warnings.some((w) => w.code === "relatorio"));
+});
+test("registros sem 282/16 geram aviso com a quantidade (e continuam no arquivo importado)", () => {
+  const r = parseECidadeCsv(csvWith("FUNCIONÁRIOS ADMITIDOS", ROWS), "a.csv");
+  assert.equal(r.records.length, 3);
+  assert.deepEqual(r.records.map((x) => x.comissionado), [true, false, true]);
+  assert.equal(r.warnings.find((w) => w.code === "nao-comissionado").rows.length, 1);
+});
