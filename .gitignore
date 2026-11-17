@@ -31,9 +31,12 @@ ACESSO*.txt
 
 # amostras reais (dados pessoais) - nunca versionar
 amostras/
-ARQUIVOS DE EXEMPLO/
+ARQUIVOS*/
 *.xlsm
 *.xlsx
+*.xls
+*.csv
+*.ods
 *.xlsm
 GERAL_ECIDADE*.csv
 CADASTRO_FUNCIONAL*
