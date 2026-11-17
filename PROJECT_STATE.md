@@ -1,14 +1,16 @@
 # Estado do projeto — Controle de Colaboradores
 
-**Atualizado em:** 2026-11-12  
+**Atualizado em:** 2026-11-17  
 **Pasta:** `Controle_Colaboradores`  
 **Plano:** [controle-colaboradores.md](./controle-colaboradores.md)
+
+## 2026-11-17: push de `2cffa14` (só docs), deployment success, smoke HTTP 200. Usuário confirmou Site URL/Redirect URLs e conferência de perfis/convites: feitos e funcionais.
 
 ## Publicado em 2026-11-16 (`d599b18`) — LEIA PRIMEIRO
 
 Branch `feat/frontend-design-skill` juntada à `main` (`193c2b2`) e publicada: visual Tailwind/shadcn, painel de cargos, orçamento, Supabase com login e aprovação, gestão de usuários, tabela salarial com abas Comissionado/Terceirizado, 1ª importação exige os 3 arquivos (depois, individual). Deployment `success`, smoke HTTP 200, bundle usa o projeto `epvrdpnftxkhxndhamar`. Variáveis `NEXT_PUBLIC_SUPABASE_*` cadastradas no GitHub (vars).
 Segurança: `docs/SEGURANCA-2026-11-16.md` — A1 (convite sem e-mail confirmado) corrigido em `a5ae4f9` e reteste APROVADO; Confirm email ligado (`mailer_autoconfirm:false`). Abertos (não bloqueiam): A2 (qualquer aprovado sobrescreve datasets), A3 (pré-cadastro do e-mail convidado), baixos (`.whl` de 8 MB versionado, CSP, CAPTCHA), LGPD (aviso de privacidade/retenção).
-Pendências do usuário: conferir perfis aprovados/convites usados antes da correção; Site URL e Redirect URLs no Supabase; decidir uso da remuneração de terceirizados.
+Pendências do usuário: decidir uso da remuneração de terceirizados.
 
 ## Retomada no computador local (2026-11-16, histórico)
 
