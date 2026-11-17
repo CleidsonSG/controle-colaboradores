@@ -4,7 +4,7 @@
 **Pasta:** `Controle_Colaboradores`  
 **Plano:** [controle-colaboradores.md](./controle-colaboradores.md)
 
-## 2026-11-17 (noite): indicadores + relatório de indicações (branch `feat/indicadores-indicacoes`, commit `de9f378`, NÃO publicado)
+## 2026-11-17 (noite): indicadores + relatório de indicações (branch `feat/indicadores-indicacoes`, commit `de9f378`; PUBLICADO em 2026-11-17 como `253d46d`, deployment success, HTTP 200; schema.sql e função convidar-usuario aplicados pelo usuário e conferidos por sonda anon)
 - KPIs aprovados pelo usuário: ocupação/custo por lotação e movimentação mensal (Painel), custo com alimentação (Funcionários). Nova tela `/indicacoes` (só admin): filtros, resumo, detalhe, Excel/PDF. Indicação saiu da tabela/CSV de Funcionários e foi para a tabela `public.indicacoes` (RLS só admin) — **exige rodar `supabase/schema.sql` ANTES de publicar** (revisão de segurança: aprovado com condição).
 - Normalização do Cadastro genérico (só COM, só TER, abas vazias; grafia original preservada; .xls recusado com orientação). Bug ROÇADOR (repetição vazia anulava o valor) corrigido. 108/108 testes com arquivos reais.
 - Proposta de ajuste de remuneração dos terceirizados em `docs/PROPOSTA-REMUNERACAO-TERCEIRIZADOS.md` (opção a: tabela da Prefeitura prevalece) — aguarda aprovação do usuário. A tabela atualizada está em Desktop/TEMP, não em ARQUIVOS DE EXEMPLO.
