@@ -49,7 +49,9 @@ export type ImportWarning = {
     /** Função repetida na tabela salarial com valores diferentes. */
     | "valores-divergentes"
     /** Função da tabela salarial sem remuneração. */
-    | "sem-valor";
+    | "sem-valor"
+    /** Aba do cadastro funcional sem registros (não é erro). */
+    | "aba-vazia";
   message: string;
   rows: number[];
 };

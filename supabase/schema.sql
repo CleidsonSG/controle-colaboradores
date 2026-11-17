@@ -280,3 +280,64 @@ create policy "admin vê convites" on public.convites
   for select to authenticated using ((select public.is_admin()));
 create policy "admin cancela convites" on public.convites
   for delete to authenticated using ((select public.is_admin()));
+
+-- =====================================================================
+-- Indicações só para administradores (revisão de segurança 2026-11-17)
+-- "Indicação" (quem indicou a pessoa ao cargo) é dado pessoal de alto risco (pode revelar vínculo político).
+-- Ela NÃO fica mais em datasets.records (que todo usuário aprovado lê): vai para esta tabela, legível e
+-- gravável só por administradores. Registros na mesma ordem de datasets.records (kind = 'planilha').
+-- =====================================================================
+create table if not exists public.indicacoes (
+  id integer primary key default 1 check (id = 1),
+  records jsonb not null default '[]'::jsonb check (pg_catalog.pg_column_size(records) < 5000000),
+  updated_by uuid default auth.uid(),
+  updated_at timestamptz not null default now()
+);
+
+drop trigger if exists indicacoes_touch on public.indicacoes;
+create trigger indicacoes_touch before insert or update on public.indicacoes
+  for each row execute function public.touch_updated();
+
+alter table public.indicacoes enable row level security;
+revoke all on public.indicacoes from anon, authenticated;
+grant select, insert, update, delete on public.indicacoes to authenticated;
+
+drop policy if exists "admin lê indicacoes" on public.indicacoes;
+drop policy if exists "admin insere indicacoes" on public.indicacoes;
+drop policy if exists "admin altera indicacoes" on public.indicacoes;
+drop policy if exists "admin apaga indicacoes" on public.indicacoes;
+create policy "admin lê indicacoes" on public.indicacoes
+  for select to authenticated using ((select public.is_admin()));
+create policy "admin insere indicacoes" on public.indicacoes
+  for insert to authenticated with check ((select public.is_admin()));
+create policy "admin altera indicacoes" on public.indicacoes
+  for update to authenticated using ((select public.is_admin())) with check ((select public.is_admin()));
+create policy "admin apaga indicacoes" on public.indicacoes
+  for delete to authenticated using ((select public.is_admin()));
+
+-- Migração dos dados já importados: copia as indicações para public.indicacoes e as REMOVE de datasets.records.
+-- Só age se ainda houver a chave "indicacao" em datasets (rodar de novo não faz nada). Cópia e remoção na mesma
+-- transação: ou as duas acontecem, ou nenhuma.
+do $$
+begin
+  if exists (
+    select 1 from public.datasets d, pg_catalog.jsonb_array_elements(d.records) as e(item)
+    where d.kind = 'planilha' and e.item ? 'indicacao'
+  ) then
+    insert into public.indicacoes (id, records)
+    select 1, coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+        'matricula', coalesce(x.item ->> 'matricula', ''),
+        'origem', coalesce(x.item ->> 'origem', ''),
+        'indicacao', coalesce(x.item ->> 'indicacao', '')
+      ) order by x.ord), '[]'::jsonb)
+    from public.datasets d, pg_catalog.jsonb_array_elements(d.records) with ordinality as x(item, ord)
+    where d.kind = 'planilha'
+    on conflict (id) do update set records = excluded.records;
+
+    update public.datasets d set records = (
+      select coalesce(pg_catalog.jsonb_agg(x.item - 'indicacao' order by x.ord), '[]'::jsonb)
+      from pg_catalog.jsonb_array_elements(d.records) with ordinality as x(item, ord)
+    )
+    where d.kind = 'planilha';
+  end if;
+end $$;

@@ -12,6 +12,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/components/auth-gate";
+import PainelIndicadores from "@/components/painel-indicadores";
 import { useDadosImportados } from "@/components/use-dados-importados";
 import { apurar, type Apuracao, type CargoApurado } from "@/lib/folha/apuracao";
 import { parseMoney } from "@/lib/import/text";
@@ -376,6 +377,8 @@ export default function PainelCargos() {
           </Alert>
         )}
       </div>
+
+      {dados.ecidade && <PainelIndicadores servidores={dados.ecidade.records} tabela={dados.salarial?.records ?? null} />}
 
       <section className="flex flex-col gap-4" aria-labelledby="cargos-titulo">
         <div className="flex flex-col gap-1">
