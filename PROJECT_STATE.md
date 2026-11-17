@@ -4,6 +4,12 @@
 **Pasta:** `Controle_Colaboradores`  
 **Plano:** [controle-colaboradores.md](./controle-colaboradores.md)
 
+## 2026-11-17 (noite): indicadores + relatório de indicações (branch `feat/indicadores-indicacoes`, commit `de9f378`, NÃO publicado)
+- KPIs aprovados pelo usuário: ocupação/custo por lotação e movimentação mensal (Painel), custo com alimentação (Funcionários). Nova tela `/indicacoes` (só admin): filtros, resumo, detalhe, Excel/PDF. Indicação saiu da tabela/CSV de Funcionários e foi para a tabela `public.indicacoes` (RLS só admin) — **exige rodar `supabase/schema.sql` ANTES de publicar** (revisão de segurança: aprovado com condição).
+- Normalização do Cadastro genérico (só COM, só TER, abas vazias; grafia original preservada; .xls recusado com orientação). Bug ROÇADOR (repetição vazia anulava o valor) corrigido. 108/108 testes com arquivos reais.
+- Proposta de ajuste de remuneração dos terceirizados em `docs/PROPOSTA-REMUNERACAO-TERCEIRIZADOS.md` (opção a: tabela da Prefeitura prevalece) — aguarda aprovação do usuário. A tabela atualizada está em Desktop/TEMP, não em ARQUIVOS DE EXEMPLO.
+- Usuário: não é preciso comunicar a ANPD (decisão de 2026-11-17).
+
 ## 2026-11-17 (tarde): planilhas por tela + INCIDENTE LGPD — LEIA PRIMEIRO
 - **Incidente:** `ARQUIVOS DE EXEMPLO/GERAL ECIDADE.csv` (relatório DEMITIDOS, 3.420 nomes) e `TABELA SALARIAL.xlsx` foram enviados ao repositório público em `e852c9c` (publicado como `9e950e0`). Histórico local reescrito (main limpa, `.gitignore` cobre a pasta e *.xlsx/*.xlsm). Force push feito pelo usuário (main = `d96072c`, sem planilhas; deployment success, HTTP 200 — entrega das planilhas por tela PUBLICADA). **Pendente:** pedir ao suporte do GitHub a remoção do cache do commit antigo. `publish_github.py` agora bloqueia planilhas em commits não enviados.
 - CSV ADMITIDOS (971) recolocado pelo usuário; com os 3 arquivos reais: 87/87 testes; Painel 753 comissionados ativos, 85 desligados, 116 fora da contagem, 21 funções todas com salário, custo R$ 3.354.941,62; Funcionários 12+22, custo mensal total R$ 138.905,95.
