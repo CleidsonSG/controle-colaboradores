@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,7 +15,8 @@ const inteiro = (n: number) => n.toLocaleString("pt-BR");
 const plural = (n: number, um: string, varios: string) => `${inteiro(n)} ${n === 1 ? um : varios}`;
 const sinal = (n: number) => (n > 0 ? `+${inteiro(n)}` : inteiro(n));
 
-const TOP = 10;
+/** Lotações visíveis de cada vez no ranking; as demais aparecem pela barra de rolagem. */
+const VISIVEIS_LOTACAO = 5;
 const MESES_VISIVEIS = 12;
 
 /** AAAA-MM-DD ou AAAA-MM → MM/AAAA. */
@@ -27,11 +28,31 @@ function mesAno(iso: string): string {
 /* ---------- Ocupação e custo por lotação ---------- */
 
 function OcupacaoLotacao({ servidores, tabela }: { servidores: ServidorECidade[]; tabela: CargoSalario[] | null }) {
-  const [todas, setTodas] = useState(false);
   const listaId = useId();
+  const listaRef = useRef<HTMLOListElement>(null);
+  const [alturaVisivel, setAlturaVisivel] = useState<number | null>(null);
   const ocupacao = useMemo(() => ocupacaoPorLotacao(servidores, tabela), [servidores, tabela]);
   const porCusto = ocupacao.custo > 0;
-  const lista = todas ? ocupacao.lotacoes : ocupacao.lotacoes.slice(0, TOP);
+  const lista = ocupacao.lotacoes;
+  const rolagem = lista.length > VISIVEIS_LOTACAO;
+
+  // Altura da lista = exatamente as 5 primeiras lotações (nomes longos quebram linha); o resto aparece rolando.
+  useLayoutEffect(() => {
+    const ol = listaRef.current;
+    if (!ol || !rolagem) {
+      setAlturaVisivel(null);
+      return;
+    }
+    const medir = () => {
+      const itens = ol.children;
+      const ultimo = itens[VISIVEIS_LOTACAO - 1] as HTMLElement | undefined;
+      if (ultimo) setAlturaVisivel(ultimo.offsetTop + ultimo.offsetHeight + 4);
+    };
+    medir();
+    const observador = new ResizeObserver(medir);
+    observador.observe(ol);
+    return () => observador.disconnect();
+  }, [rolagem, lista]);
   const maximo = Math.max(1, ...ocupacao.lotacoes.map((l) => (porCusto ? l.custo : l.servidores)));
 
   return (
@@ -50,9 +71,11 @@ function OcupacaoLotacao({ servidores, tabela }: { servidores: ServidorECidade[]
         ) : (
           <ol
             id={listaId}
-            className={cn("flex flex-col gap-3.5", todas && "max-h-96 overflow-y-auto pr-2")}
-            aria-label={todas ? "Todas as lotações" : `As ${TOP} lotações com maior ${porCusto ? "custo" : "ocupação"}`}
-            tabIndex={todas ? 0 : undefined}
+            ref={listaRef}
+            className={cn("relative flex flex-col gap-3.5", rolagem && "overflow-y-auto overscroll-contain pr-3 [scrollbar-gutter:stable]")}
+            style={rolagem && alturaVisivel ? { maxHeight: alturaVisivel } : undefined}
+            aria-label={`Lotações por ${porCusto ? "custo" : "ocupação"}${rolagem ? `: ${VISIVEIS_LOTACAO} por vez, role para ver as demais` : ""}`}
+            tabIndex={rolagem ? 0 : undefined}
           >
             {lista.map((lotacao, indice) => {
               const parte = ((porCusto ? lotacao.custo : lotacao.servidores) / maximo) * 100;
@@ -77,10 +100,10 @@ function OcupacaoLotacao({ servidores, tabela }: { servidores: ServidorECidade[]
             })}
           </ol>
         )}
-        {ocupacao.lotacoes.length > TOP && (
-          <Button className="self-start" variant="outline" size="sm" type="button" aria-expanded={todas} aria-controls={listaId} onClick={() => setTodas((v) => !v)}>
-            {todas ? `Mostrar só as ${TOP} primeiras` : `Ver todas as ${inteiro(ocupacao.lotacoes.length)} lotações`}
-          </Button>
+        {rolagem && (
+          <p className="text-xs text-muted-foreground">
+            Mostrando {VISIVEIS_LOTACAO} por vez · role a lista para ver as {inteiro(ocupacao.lotacoes.length)} lotações
+          </p>
         )}
         {ocupacao.lotacoes.length > 0 && (
           <p className="border-t pt-3 text-sm text-muted-foreground tabular-nums">
