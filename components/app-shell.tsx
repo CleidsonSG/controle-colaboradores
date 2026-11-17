@@ -9,6 +9,7 @@ import {
   ChevronRight,
   CircleHelp,
   ClipboardList,
+  FileLock2,
   LayoutGrid,
   LogOut,
   Menu,
@@ -26,12 +27,14 @@ import {
 import { useAuth } from "@/components/auth-gate";
 import { Button } from "@/components/ui/button";
 import { storageMode } from "@/lib/storage";
+import { isSupabaseConfigured } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 const navigation: { label: string; href: string; icon: LucideIcon; adminOnly?: boolean }[] = [
   { label: "Painel de cargos", href: "/", icon: LayoutGrid },
   { label: "Funcionários", href: "/employees", icon: Users },
   { label: "Orçamento", href: "/budget", icon: Wallet },
+  { label: "Relatório de indicações", href: "/indicacoes", icon: FileLock2, adminOnly: true },
   { label: "Importar Dados", href: "/import", icon: Upload },
   { label: "Estatísticas de Cargo", href: "/statistics", icon: ChartColumn },
   { label: "Manutenção de Cargos", href: "/positions", icon: ClipboardList },
@@ -228,7 +231,7 @@ function Shell({ children }: { children: ReactNode }) {
           </span>
         </Link>
         <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3" aria-label="Navegação principal">
-          {navigation.filter((item) => !item.adminOnly || isAdmin).map((item) => {
+          {navigation.filter((item) => !item.adminOnly || isAdmin || !isSupabaseConfigured()).map((item) => {
             const active = current === item.href;
             const Icon = item.icon;
             return (

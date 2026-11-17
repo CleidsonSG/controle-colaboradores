@@ -106,3 +106,64 @@ test("matrícula TERCEIRIZADA (texto fixo) não gera duplicidade", async () => {
   assert.equal(r.records.length, 3);
   assert.ok(!r.records.some((x) => x.possivelDuplicidade));
 });
+
+const HEAD = ["Matrícula", "Servidor", "Empresa/Secretaria", "Lotação", "Função", "Remuneração", "Alimentação", "Indicação"];
+async function sheetsWith(defs) {
+  const { default: ExcelJS } = await import("exceljs");
+  const wb = new ExcelJS.Workbook();
+  for (const [name, rows, preamble = []] of defs) {
+    const ws = wb.addWorksheet(name);
+    for (const p of preamble) ws.addRow(p);
+    ws.addRow(HEAD);
+    for (const r of rows) ws.addRow(r);
+  }
+  return new Uint8Array(await wb.xlsx.writeBuffer()).buffer;
+}
+
+test("só CADASTRO_COM, só CADASTRO_TER e abas vazias não geram erro (aviso por aba vazia)", async () => {
+  const onlyCom = await parsePlanilhaWorkbook(await sheetsWith([["CADASTRO_COM", [[1, "A", "E", "L", "F", 10, 1, ""]]]]), "p.xlsx");
+  assert.deepEqual(onlyCom.countsBySheet.map((c) => [c.origem, c.count]), [["Comissionado", 1]]);
+  const onlyTer = await parsePlanilhaWorkbook(await sheetsWith([["CADASTRO_TER", [[2, "B", "E", "L", "F", 10, 1, ""]]]]), "p.xlsx");
+  assert.deepEqual(onlyTer.records.map((r) => r.origem), ["Terceirizado"]);
+  const comVazia = await parsePlanilhaWorkbook(await sheetsWith([["CADASTRO_COM", [[1, "A", "E", "L", "F", 10, 1, ""]]], ["CADASTRO_TER", []]]), "p.xlsx");
+  assert.equal(comVazia.records.length, 1);
+  assert.ok(comVazia.warnings.some((w) => w.code === "aba-vazia" && w.message === "Aba CADASTRO_TER sem registros."));
+  await assert.rejects(() => parsePlanilhaWorkbook(await_empty(), "p.xlsx"));
+});
+function await_empty() {
+  return new ArrayBuffer(0);
+}
+
+test("normalização: linhas vazias/título ignoradas, espaços, caixa, indicação e dinheiro tolerante", async () => {
+  const buf = await sheetsWith([
+    [
+      "CADASTRO_COM",
+      [
+        ["", "", "", "", "", "", "", ""],
+        ["TOTAIS DO MÊS", null, null, null, null, null, null, null],
+        [1, "  Ana   Teste ", "EMPRESA  UM", "SECRETARIA DE SAÚDE", "auxiliar  administrativo", "R$ 1.234,56", "1234.5", "SEM INDICAÇÃO"],
+        [2, "Bia Teste", "Empresa Um", "Secretaria de Saúde", "Auxiliar Administrativo", "R$1500", "0,00", "  indicador   x "],
+        [3, "Caio Teste", "empresa um", "secretaria de saúde", "AUXILIAR ADMINISTRATIVO", "abc", "", null],
+      ],
+      [["Planilha de teste"]],
+    ],
+  ]);
+  const r = await parsePlanilhaWorkbook(buf, "p.xlsx");
+  assert.equal(r.records.length, 3);
+  assert.deepEqual(r.warnings.filter((w) => w.code === "linha-ignorada"), []);
+  const [a, b, c] = r.records;
+  assert.equal(a.servidor, "Ana Teste");
+  assert.deepEqual([a.empresaSecretaria, b.empresaSecretaria, c.empresaSecretaria], ["EMPRESA UM", "EMPRESA UM", "EMPRESA UM"]);
+  assert.deepEqual([a.lotacao, c.lotacao], ["SECRETARIA DE SAÚDE", "SECRETARIA DE SAÚDE"]);
+  assert.deepEqual([a.funcao, b.funcao, c.funcao], ["auxiliar administrativo", "auxiliar administrativo", "auxiliar administrativo"]);
+  assert.deepEqual([a.indicacao, b.indicacao, c.indicacao], ["SEM INDICAÇÃO", "indicador x", "SEM INDICAÇÃO"]);
+  assert.deepEqual([a.remuneracao, a.alimentacao, b.remuneracao, b.alimentacao, c.remuneracao], [1234.56, 1234.5, 1500, 0, null]);
+  assert.ok(r.warnings.some((w) => w.code === "valor-invalido"));
+});
+
+test("arquivo .xls (OLE2 ou extensão) é recusado com instrução clara", async () => {
+  const ole = new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0, 0, 0, 0]).buffer;
+  await assert.rejects(() => parsePlanilhaWorkbook(ole, "p.xlsx"), (e) => e.code === "formato" && /\.xlsx ou \.xlsm/.test(e.message));
+  const { importFile } = await import("../lib/import/index.ts");
+  await assert.rejects(() => importFile(new File([new Uint8Array([1])], "antiga.xls")), (e) => e.code === "formato" && /\.xlsx ou \.xlsm/.test(e.message));
+});

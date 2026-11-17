@@ -90,3 +90,9 @@ test("duplicada com mesmo valor = duplicidade; sem valor = aviso com contagem; a
   assert.equal(by("sem-valor")[0].rows.length, 2);
   assert.equal(r.records.find((x) => x.cargo === "SERVENTE").salario, 2000);
 });
+
+test("repetição sem valor antes da preenchida (ROCADOR vazio, depois ROÇADOR): vale o valor preenchido", () => {
+  const csv = "FUNÇÃO;REMUNERAÇÃO\r\nROCADOR;\r\nROÇADOR;1.851,90\r\nSERVENTE;1.851,90\r\n";
+  const r = parseTabelaSalarialCsv(enc(csv), "tabela.csv");
+  assert.deepEqual(r.records.map((x) => [x.cargo, x.salario]), [["ROCADOR", 1851.9], ["SERVENTE", 1851.9]]);
+});

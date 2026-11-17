@@ -59,6 +59,14 @@ function finish(fileName: string, grupos: GrupoSalarial[]): ImportResult<CargoSa
       const salario = money.invalid ? null : money.value;
       if (seen.has(key)) {
         const first = seen.get(key) ?? null;
+        if (first === null && salario !== null) {
+          // Vale a primeira remuneração preenchida: uma repetição sem valor (ex.: ROCADOR vazio antes de ROÇADOR) não anula a função.
+          const existente = records.find((r) => r.origem === grupo.origem && normalizeHeader(r.cargo) === key);
+          if (existente) existente.salario = salario;
+          seen.set(key, salario);
+          collector.add("duplicidade", "Funções repetidas na mesma aba: foi usada a primeira remuneração preenchida.", row.linha);
+          continue;
+        }
         if (salario !== null && first !== null && salario !== first) {
           collector.add("valores-divergentes", "Funções repetidas com valores diferentes: foi usada a primeira remuneração encontrada.", row.linha);
         } else {

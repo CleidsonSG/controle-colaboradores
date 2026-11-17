@@ -1,5 +1,5 @@
 import { parseECidadeCsv } from "./ecidade-csv.ts";
-import { loadWorkbook, orderedSheets, parsePlanilhaFromWorkbook, rowTexts } from "./planilha-excel.ts";
+import { loadWorkbook, orderedSheets, parsePlanilhaFromWorkbook, rowTexts, XLS_MESSAGE } from "./planilha-excel.ts";
 import { findSalarialSheet, isSalarialHeader, parseTabelaSalarialCsv, parseTabelaSalarialWorkbook } from "./tabela-salarial.ts";
 import { decodeText, detectDelimiter } from "./text.ts";
 import { ImportFileError, type AnyImportResult, type ImportKind } from "./types.ts";
@@ -46,6 +46,7 @@ function csvLooksSalarial(buffer: ArrayBuffer): boolean {
  * Com `kind`, o arquivo é lido como aquele tipo (ex.: enviado pelo cartão da tabela salarial).
  */
 export async function importFile(file: File, kind?: ImportKind): Promise<AnyImportResult> {
+  if (file.name.toLowerCase().endsWith(".xls")) throw new ImportFileError("formato", XLS_MESSAGE);
   const byExtension = detectKind(file.name);
   if (!byExtension) throw new ImportFileError("formato", FORMAT_ERROR_MESSAGE);
   if (file.size > MAX_FILE_BYTES) throw new ImportFileError("tamanho", FORMAT_ERROR_MESSAGE);

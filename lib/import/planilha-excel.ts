@@ -1,6 +1,6 @@
 import type { Cell, Worksheet } from "exceljs";
-import { matriculaToText, normalizeHeader, parseMoney, WarningCollector } from "./text.ts";
-import { ImportFileError, type ColaboradorPlanilha, type ImportResult, type Origem } from "./types.ts";
+import { cleanText, matriculaToText, normalizeHeader, normalizeIndicacao, normalizeLabel, parseMoney, unifySpelling, WarningCollector } from "./text.ts";
+import { ImportFileError, type ColaboradorPlanilha, type ImportResult, type ImportWarning, type Origem } from "./types.ts";
 
 const SHEET_ORIGINS: Origem[] = ["Comissionado", "Terceirizado"];
 const SHEET_NAMES: Record<Origem, string> = { Comissionado: "cadastro_com", Terceirizado: "cadastro_ter" };
@@ -74,7 +74,16 @@ function findHeaderRow(worksheet: Worksheet): number {
   return FALLBACK_HEADER_ROW;
 }
 
+export const XLS_MESSAGE = "Arquivos .xls (Excel antigo) não são aceitos. Abra no Excel e salve como .xlsx ou .xlsm.";
+
+/** Assinatura OLE2 dos arquivos .xls antigos (mesmo quando renomeados para .xlsx). */
+function isLegacyXls(buffer: ArrayBuffer): boolean {
+  const bytes = new Uint8Array(buffer, 0, Math.min(4, buffer.byteLength));
+  return bytes.length === 4 && bytes[0] === 0xd0 && bytes[1] === 0xcf && bytes[2] === 0x11 && bytes[3] === 0xe0;
+}
+
 export async function loadWorkbook(buffer: ArrayBuffer) {
+  if (isLegacyXls(buffer)) throw new ImportFileError("formato", XLS_MESSAGE);
   const exceljs: typeof import("exceljs") & { default?: typeof import("exceljs") } = await import("exceljs");
   const Workbook = exceljs.default?.Workbook ?? exceljs.Workbook;
   const workbook = new Workbook();
@@ -110,6 +119,30 @@ export function pickCadastroSheets(workbook: LoadedWorkbook): { worksheet: Works
   return picked;
 }
 
+/** Linha de título solta (uma única célula de texto) ou cabeçalho repetido no meio dos dados. */
+function isTitleOrRepeatedHeader(cells: ReadCell[], filledCount: number): boolean {
+  const first = cells[0].value;
+  if (typeof first === "string" && normalizeHeader(first) === "matricula") return true;
+  if (filledCount > 1) return false;
+  const only = cells.find((cell) => cell.value !== null)?.value;
+  return typeof only === "string" && !/^\d+$/.test(only.trim());
+}
+
+/** Texto consistente: limpa caixa de Função/Empresa/Lotação/Indicação e usa uma só grafia por valor. */
+function normalizeRecords(records: ColaboradorPlanilha[]): void {
+  const fields = ["funcao", "empresaSecretaria", "lotacao"] as const;
+  for (const field of fields) {
+    const unified = unifySpelling(records.map((record) => normalizeLabel(record[field])));
+    records.forEach((record, index) => {
+      record[field] = unified[index];
+    });
+  }
+  const indicacoes = unifySpelling(records.map((record) => normalizeIndicacao(record.indicacao)));
+  records.forEach((record, index) => {
+    record.indicacao = indicacoes[index];
+  });
+}
+
 /** Lê as abas de comissionados e terceirizados da planilha XLSX/XLSM como dados; macros nunca são executadas. */
 export async function parsePlanilhaWorkbook(buffer: ArrayBuffer, fileName: string): Promise<ImportResult<ColaboradorPlanilha>> {
   if (buffer.byteLength === 0) throw new ImportFileError("vazio", "O arquivo está vazio.");
@@ -132,6 +165,7 @@ export function parsePlanilhaFromWorkbook(workbook: LoadedWorkbook, fileName: st
   const warnings = new WarningCollector();
   const records: ColaboradorPlanilha[] = [];
   const countsBySheet: ImportResult<ColaboradorPlanilha>["countsBySheet"] = [];
+  const emptySheets: string[] = [];
 
   sheets.forEach(({ worksheet, origem }) => {
     let count = 0;
@@ -153,14 +187,16 @@ export function parsePlanilhaFromWorkbook(workbook: LoadedWorkbook, fileName: st
           }
           return read;
         });
-        if (cells.every((cell) => cell.value === null)) continue;
+        const filled = cells.filter((cell) => cell.value !== null);
+        if (filled.length === 0) continue;
+        if (isTitleOrRepeatedHeader(cells, filled.length)) continue;
         const matricula = matriculaToText(cells[0].value ?? "");
-        const servidor = String(cells[1].value ?? "");
+        const servidor = cleanText(String(cells[1].value ?? ""));
         if (matricula === "" || servidor === "") {
           warnings.add("linha-ignorada", "Linhas sem matrícula ou servidor foram ignoradas.", rowNumber);
           continue;
         }
-        const text = (index: number) => (cells[index].value === null ? "" : String(cells[index].value));
+        const text = (index: number) => (cells[index].value === null ? "" : cleanText(String(cells[index].value)));
         const money = (index: number) => {
           const parsed = parseMoney(cells[index].value);
           if (parsed.invalid) warnings.add("valor-invalido", "Valores monetários inválidos foram deixados em branco.", rowNumber);
@@ -183,7 +219,10 @@ export function parsePlanilhaFromWorkbook(workbook: LoadedWorkbook, fileName: st
       }
     }
     countsBySheet.push({ sheet: worksheet.name, origem, count });
+    if (count === 0) emptySheets.push(worksheet.name);
   });
+  if (records.length === 0) throw new ImportFileError("vazio", "Não encontramos registros nesta planilha.");
+  normalizeRecords(records);
 
   const origensPorMatricula = new Map<string, Set<Origem>>();
   for (const record of records) {
@@ -204,6 +243,10 @@ export function parsePlanilhaFromWorkbook(workbook: LoadedWorkbook, fileName: st
     }
   }
 
-  if (records.length === 0) throw new ImportFileError("vazio", "Não encontramos registros nesta planilha.");
-  return { kind: "planilha", fileName, records, countsBySheet, warnings: warnings.list() };
+  const emptyWarnings: ImportWarning[] = emptySheets.map((sheet) => ({
+    code: "aba-vazia",
+    message: `Aba ${sheet} sem registros.`,
+    rows: [],
+  }));
+  return { kind: "planilha", fileName, records, countsBySheet, warnings: [...emptyWarnings, ...warnings.list()] };
 }

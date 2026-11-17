@@ -11,6 +11,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import CustoAlimentacao from "@/components/custo-alimentacao";
 import DataTable, { formatMoney, type Column } from "@/components/data-table";
 import { getDataStore, storageMode } from "@/lib/storage";
 import { conferirTerceirizados, custoMensal, subtotais, type Soma } from "@/lib/folha/funcionarios";
@@ -40,7 +41,6 @@ export const PLANILHA_COLUMNS: Column<ColaboradorPlanilha>[] = [
   { key: "remuneracao", header: "Remuneração (R$)", kind: "money", value: (row) => row.remuneracao },
   { key: "alimentacao", header: "Alimentação (R$)", kind: "money", value: (row) => row.alimentacao },
   { key: "custo", header: "Custo mensal (R$)", kind: "money", value: (row) => custoMensal(row) },
-  { key: "indicacao", header: "Indicação", value: (row) => row.indicacao },
   { key: "origem", header: "Origem", value: (row) => row.origem },
 ];
 
@@ -381,6 +381,8 @@ export default function EmployeesView() {
       </header>
 
       {state.status === "loading" ? <KpiLoading /> : state.status === "ready" ? <KpiStrip planilha={state.planilha} /> : null}
+
+      {state.status === "ready" && state.planilha && <CustoAlimentacao rows={state.planilha.records} />}
 
       <div className="flex flex-col gap-6">{body()}</div>
     </div>

@@ -63,3 +63,18 @@ test("matrícula numérica vira texto", () => {
   assert.equal(matriculaToText(123456789012345), "123456789012345");
   assert.equal(matriculaToText(" 77 "), "77");
 });
+
+import { normalizeIndicacao, normalizeLabel, parseMoney as parseMoneyTolerante } from "../lib/import/text.ts";
+test("normalizeLabel/normalizeIndicacao", () => {
+  assert.equal(normalizeLabel("  SECRETARIA   DE  SAÚDE "), "SECRETARIA DE SAÚDE");
+  assert.equal(normalizeLabel("Assessor TI"), "Assessor TI");
+  assert.equal(normalizeIndicacao(""), "SEM INDICAÇÃO");
+  assert.equal(normalizeIndicacao(" sem   indicação. "), "SEM INDICAÇÃO");
+  assert.equal(normalizeIndicacao("FULANO DA SILVA"), "FULANO DA SILVA");
+});
+test("parseMoney tolerante", () => {
+  for (const [entrada, esperado] of [["R$ 1.234,56", 1234.56], ["1234,5", 1234.5], ["R$1500", 1500], ["1.234.567", 1234567], ["R$ 0,00", 0], [" ", null]]) {
+    assert.equal(parseMoneyTolerante(entrada).value, esperado);
+  }
+  assert.equal(parseMoneyTolerante("abc").invalid, true);
+});

@@ -98,3 +98,34 @@ export class WarningCollector {
     return [...this.map.values()];
   }
 }
+
+/** Rótulo único para registros sem indicação (padrão das planilhas). */
+export const SEM_INDICACAO = "SEM INDICAÇÃO";
+
+/** Remove espaços nas pontas e colapsa espaços repetidos (inclusive não separáveis) e tabulações. */
+export function cleanText(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+/** Texto livre da planilha (função, empresa, lotação): só limpa espaços; a caixa original é preservada. */
+export function normalizeLabel(value: string): string {
+  return cleanText(value);
+}
+
+/** Indicação: vazio, "Sem indicação" e variações viram "SEM INDICAÇÃO"; o resto só tem os espaços limpos. */
+export function normalizeIndicacao(value: string): string {
+  const text = cleanText(value);
+  const key = normalizeHeader(text).replace(/[.\-–—]+$/g, "").trim();
+  if (key === "" || key === "sem indicacao" || key === "nao ha" || key === "n/a" || key === "nenhuma") return SEM_INDICACAO;
+  return text;
+}
+
+/** Uma grafia por chave normalizada (sem acento nem caixa): a primeira encontrada. */
+export function unifySpelling(values: string[]): string[] {
+  const canonical = new Map<string, string>();
+  return values.map((value) => {
+    const key = normalizeHeader(value);
+    if (!canonical.has(key)) canonical.set(key, value);
+    return canonical.get(key) as string;
+  });
+}
