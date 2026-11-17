@@ -15,6 +15,19 @@ create table if not exists public.datasets (
   updated_at timestamptz not null default now()
 );
 
+-- Limite de tamanho do conjunto importado (revisão de segurança A4): evita gravar JSON gigante e estourar a cota.
+-- "not valid" não reprocessa as linhas já gravadas; vale para toda nova gravação.
+do $$
+begin
+  if not exists (
+    select 1 from pg_catalog.pg_constraint
+    where conname = 'datasets_records_tamanho' and conrelid = 'public.datasets'::regclass
+  ) then
+    alter table public.datasets
+      add constraint datasets_records_tamanho check (pg_catalog.pg_column_size(records) < 20000000) not valid;
+  end if;
+end $$;
+
 -- Configurações informadas na tela (linha única, id = 1).
 create table if not exists public.configuracoes (
   id integer primary key default 1 check (id = 1),
@@ -82,9 +95,11 @@ revoke all on function public.is_admin() from public, anon;
 grant execute on function public.is_aprovado() to authenticated;
 grant execute on function public.is_admin() to authenticated;
 
--- Convites (2026-11-16): pré-aprovação feita por um administrador. Quem se cadastrar com um e-mail convidado
--- é aprovado, com o perfil escolhido no convite, SÓ DEPOIS de confirmar o e-mail (revisão de segurança A1).
--- Mantenha "Confirm email" ligado no Supabase; o banco não depende só dessa opção.
+-- Convites (2026-11-17, revisão de segurança A3): o administrador convida pela tela "Usuários"; a Edge Function
+-- "convidar-usuario" confere se ele é administrador, pede ao Supabase Auth o envio do convite (inviteUserByEmail) e
+-- registra aqui o perfil escolhido. A pessoa define a própria senha pelo link do e-mail.
+-- O convite só aprova contas CRIADAS PELO CONVITE (auth.users.invited_at preenchido) e depois que o link foi aberto.
+-- Um cadastro público com um e-mail convidado fica pendente como qualquer outro.
 create table if not exists public.convites (
   email text primary key check (email = lower(btrim(email)) and position('@' in email) > 1),
   papel text not null default 'usuario' check (papel in ('admin', 'usuario')),
@@ -98,14 +113,25 @@ create table if not exists public.convites (
 create schema if not exists private;
 revoke all on schema private from public, anon, authenticated;
 
--- Aplica o convite de um e-mail JÁ CONFIRMADO: aprova o perfil ainda pendente com o papel do convite e marca o
--- convite como usado. Idempotente; nunca altera perfis aprovados ou bloqueados.
+-- Aplica o convite de uma conta criada por convite e já confirmada: aprova o perfil ainda pendente com o papel do
+-- convite e marca o convite como usado. Idempotente; nunca altera perfis aprovados ou bloqueados.
 create or replace function private.aplicar_convite(p_user_id uuid, p_email text)
 returns void language plpgsql security definer set search_path = '' as $$
 declare
   v_email text := pg_catalog.lower(pg_catalog.btrim(coalesce(p_email, '')));
   v_papel text;
 begin
+  -- Senha vazia = conta criada pelo convite (inviteUserByEmail não define senha; a pessoa só a cria depois de abrir
+  -- o link). Se alguém se cadastrou antes com esse e-mail, o Auth reaproveita a conta não confirmada ao convidar
+  -- (preenche invited_at), mas ela já tem a senha escolhida por quem se cadastrou: nesse caso fica pendente (A3).
+  if not exists (
+    select 1 from auth.users u
+    where u.id = p_user_id and u.invited_at is not null and u.email_confirmed_at is not null
+      and coalesce(u.encrypted_password, '') = ''
+  ) then
+    return;
+  end if;
+
   select c.papel into v_papel from public.convites c
   where c.email = v_email and c.usado_em is null
   for update;
@@ -124,10 +150,8 @@ end $$;
 
 revoke all on function private.aplicar_convite(uuid, text) from public, anon, authenticated;
 
--- Todo novo usuário do Supabase Auth nasce PENDENTE. O convite só vale quando o e-mail está confirmado E houve
--- envio de link de confirmação (confirmation_sent_at). Sem essa segunda condição, com "Confirm email" desligado o
--- Supabase confirma o e-mail sozinho no cadastro e o convite viraria acesso para quem não é dono do e-mail.
--- Usuário criado no painel com "Auto Confirm" também fica pendente: o administrador aprova na tela de usuários.
+-- Todo novo usuário do Supabase Auth nasce PENDENTE, inclusive o convidado (ele ainda não abriu o link).
+-- Usuário criado no painel ou pelo cadastro público fica pendente: o administrador aprova na tela de usuários.
 create or replace function public.criar_perfil_novo_usuario()
 returns trigger language plpgsql security definer set search_path = '' as $$
 begin
@@ -140,10 +164,6 @@ begin
     'usuario'
   )
   on conflict (user_id) do nothing;
-
-  if new.email_confirmed_at is not null and new.confirmation_sent_at is not null then
-    perform private.aplicar_convite(new.id, new.email);
-  end if;
   return new;
 end $$;
 
@@ -158,10 +178,12 @@ drop trigger if exists ao_criar_usuario on auth.users;
 create trigger ao_criar_usuario after insert on auth.users
   for each row execute function public.criar_perfil_novo_usuario();
 
+-- Ao abrir o link do convite o Supabase confirma o e-mail; só então o convite é aplicado, e só para contas
+-- criadas por convite (invited_at). Quem se cadastrou sozinho continua pendente mesmo com e-mail convidado.
 drop trigger if exists ao_confirmar_email on auth.users;
 create trigger ao_confirmar_email after update of email_confirmed_at on auth.users
   for each row when (
-    old.email_confirmed_at is null and new.email_confirmed_at is not null and new.confirmation_sent_at is not null
+    old.email_confirmed_at is null and new.email_confirmed_at is not null and new.invited_at is not null
   )
   execute function public.aplicar_convite_ao_confirmar();
 
@@ -211,30 +233,50 @@ drop policy if exists "admin altera perfis" on public.perfis;
 create policy "admin altera perfis" on public.perfis
   for update to authenticated using ((select public.is_admin())) with check ((select public.is_admin()));
 
--- Dados importados e configurações: agora exigem usuário APROVADO (antes bastava o login).
+-- Dados importados e configurações: usuários APROVADOS leem; só ADMINISTRADORES importam, alteram ou apagam
+-- (revisão de segurança A2: uma conta comum comprometida não consegue adulterar nem apagar os dados).
 drop policy if exists "autenticados leem datasets" on public.datasets;
 drop policy if exists "autenticados gravam datasets" on public.datasets;
 drop policy if exists "aprovados leem datasets" on public.datasets;
 drop policy if exists "aprovados gravam datasets" on public.datasets;
+drop policy if exists "admin insere datasets" on public.datasets;
+drop policy if exists "admin altera datasets" on public.datasets;
+drop policy if exists "admin apaga datasets" on public.datasets;
 create policy "aprovados leem datasets" on public.datasets
   for select to authenticated using ((select public.is_aprovado()));
-create policy "aprovados gravam datasets" on public.datasets
-  for all to authenticated using ((select public.is_aprovado())) with check ((select public.is_aprovado()));
+create policy "admin insere datasets" on public.datasets
+  for insert to authenticated with check ((select public.is_admin()));
+create policy "admin altera datasets" on public.datasets
+  for update to authenticated using ((select public.is_admin())) with check ((select public.is_admin()));
+create policy "admin apaga datasets" on public.datasets
+  for delete to authenticated using ((select public.is_admin()));
 
 drop policy if exists "autenticados leem configuracoes" on public.configuracoes;
 drop policy if exists "autenticados gravam configuracoes" on public.configuracoes;
 drop policy if exists "aprovados leem configuracoes" on public.configuracoes;
 drop policy if exists "aprovados gravam configuracoes" on public.configuracoes;
+drop policy if exists "admin insere configuracoes" on public.configuracoes;
+drop policy if exists "admin altera configuracoes" on public.configuracoes;
+drop policy if exists "admin apaga configuracoes" on public.configuracoes;
 create policy "aprovados leem configuracoes" on public.configuracoes
   for select to authenticated using ((select public.is_aprovado()));
-create policy "aprovados gravam configuracoes" on public.configuracoes
-  for all to authenticated using ((select public.is_aprovado())) with check ((select public.is_aprovado()));
+create policy "admin insere configuracoes" on public.configuracoes
+  for insert to authenticated with check ((select public.is_admin()));
+create policy "admin altera configuracoes" on public.configuracoes
+  for update to authenticated using ((select public.is_admin())) with check ((select public.is_admin()));
+create policy "admin apaga configuracoes" on public.configuracoes
+  for delete to authenticated using ((select public.is_admin()));
 
--- Convites: só administradores veem, criam e cancelam.
+-- Convites: administradores veem e cancelam. Criar convite só pela Edge Function "convidar-usuario"
+-- (ela usa a chave secreta do servidor, depois de conferir que quem chama é administrador).
 alter table public.convites enable row level security;
 revoke all on public.convites from anon, authenticated;
-grant select, insert, delete on public.convites to authenticated;
+grant select, delete on public.convites to authenticated;
 
 drop policy if exists "admin gerencia convites" on public.convites;
-create policy "admin gerencia convites" on public.convites
-  for all to authenticated using ((select public.is_admin())) with check ((select public.is_admin()));
+drop policy if exists "admin vê convites" on public.convites;
+drop policy if exists "admin cancela convites" on public.convites;
+create policy "admin vê convites" on public.convites
+  for select to authenticated using ((select public.is_admin()));
+create policy "admin cancela convites" on public.convites
+  for delete to authenticated using ((select public.is_admin()));

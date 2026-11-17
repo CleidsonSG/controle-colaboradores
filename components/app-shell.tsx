@@ -162,6 +162,13 @@ function useIsMobile(): boolean {
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  // A página pública de privacidade tem layout próprio, sem menu nem dados.
+  if ((pathname ?? "").replace(/\/+$/, "") === "/privacidade") return <>{children}</>;
+  return <Shell>{children}</Shell>;
+}
+
+function Shell({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
   const { isAdmin } = useAuth();
   const current = pathname.replace(/\/+$/, "") || "/";
   const [menuOpen, setMenuOpen] = useState(false);
@@ -243,6 +250,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
             );
           })}
         </nav>
+        <Link
+          className="mx-3 flex min-h-10 items-center gap-3 rounded-md px-3 text-sm text-sidebar-foreground/85 transition-colors hover:bg-sidebar-accent/60 hover:text-white focus-visible:outline-sidebar-ring"
+          href="/privacidade"
+          onClick={onNavigate}
+        >
+          <ShieldCheck className="size-[18px] shrink-0 text-sidebar-muted" aria-hidden="true" />
+          <span>Privacidade</span>
+        </Link>
         <div className="m-3 flex items-center gap-2.5 rounded-md border border-sidebar-border px-3 py-2.5 text-xs text-sidebar-muted">
           <ShieldCheck className="size-4 shrink-0 text-sidebar-ring" aria-hidden="true" />
           <span>{storageMode() === "supabase" ? "Dados no Supabase, com acesso por login" : "Dados guardados só neste navegador"}</span>

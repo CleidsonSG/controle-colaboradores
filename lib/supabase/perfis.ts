@@ -110,16 +110,32 @@ export async function listarConvites(supabase: SupabaseClient): Promise<Convite[
   return (data ?? []).map((row) => ({ email: row.email, papel: row.papel, criadoEm: row.criado_em, usadoEm: row.usado_em }));
 }
 
-export async function criarConvite(supabase: SupabaseClient, email: string, papel: PapelPerfil): Promise<Convite> {
-  const { data, error } = await supabase
-    .from("convites")
-    .insert({ email: normalizarEmail(email), papel })
-    .select("email, papel, criado_em, usado_em")
-    .single<ConviteRow>();
-  if (error) {
-    throw new Error(error.code === "23505" ? "Já existe um convite para este e-mail." : "Não foi possível registrar o convite.");
+const ERRO_CONVITE = "Não foi possível enviar o convite. Tente novamente.";
+
+/** Mensagem em pt-BR devolvida pela Edge Function (corpo `{ error }`), quando houver. */
+async function mensagemDaFuncao(error: unknown): Promise<string> {
+  const resposta = (error as { context?: unknown }).context;
+  if (!(resposta instanceof Response)) return ERRO_CONVITE;
+  try {
+    const corpo = (await resposta.json()) as { error?: unknown };
+    return typeof corpo.error === "string" ? corpo.error : ERRO_CONVITE;
+  } catch {
+    return ERRO_CONVITE;
   }
-  return { email: data.email, papel: data.papel, criadoEm: data.criado_em, usadoEm: data.usado_em };
+}
+
+/**
+ * Pede à Edge Function "convidar-usuario" que o Supabase envie o e-mail de convite (a pessoa define a própria senha)
+ * e registre o perfil escolhido. Só administradores conseguem; a função confere isso no servidor.
+ */
+export async function convidarUsuario(supabase: SupabaseClient, email: string, papel: PapelPerfil): Promise<Convite> {
+  const { data, error } = await supabase.functions.invoke<{ convite: ConviteRow }>("convidar-usuario", {
+    body: { email: normalizarEmail(email), papel },
+  });
+  if (error) throw new Error(await mensagemDaFuncao(error));
+  if (!data?.convite) throw new Error(ERRO_CONVITE);
+  const row = data.convite;
+  return { email: row.email, papel: row.papel, criadoEm: row.criado_em, usadoEm: row.usado_em };
 }
 
 export async function cancelarConvite(supabase: SupabaseClient, email: string): Promise<void> {

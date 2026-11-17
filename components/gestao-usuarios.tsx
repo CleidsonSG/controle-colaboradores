@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useMemo, useState, type FormEvent } from "react";
-import { Check, CircleAlert, Copy, KeyRound, Loader2, MailPlus, RefreshCw, Search, ShieldCheck, ShieldX, Trash2, Undo2, UserPlus } from "lucide-react";
+import { Check, CircleAlert, KeyRound, Loader2, MailPlus, RefreshCw, Search, ShieldCheck, ShieldX, Trash2, Undo2, UserPlus } from "lucide-react";
 import { useAuth } from "@/components/auth-gate";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -16,9 +16,8 @@ import { getSupabase, isSupabaseConfigured } from "@/lib/supabase/client";
 import {
   atualizarPerfil,
   cancelarConvite,
-  criarConvite,
+  convidarUsuario,
   emailValido,
-  enderecoDoSistema,
   enviarLinkNovaSenha,
   listarConvites,
   listarPerfis,
@@ -48,30 +47,6 @@ type Confirmacao =
 
 function semAcento(texto: string) {
   return texto.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-}
-
-function linkCadastro() {
-  return `${enderecoDoSistema()}?cadastro=1`;
-}
-
-function BotaoCopiar({ texto, rotulo = "Copiar link" }: { texto: string; rotulo?: string }) {
-  const [copiado, setCopiado] = useState(false);
-  return (
-    <Button
-      size="sm"
-      variant="outline"
-      type="button"
-      onClick={() => {
-        void navigator.clipboard?.writeText(texto).then(() => {
-          setCopiado(true);
-          window.setTimeout(() => setCopiado(false), 2000);
-        });
-      }}
-    >
-      {copiado ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-      {copiado ? "Copiado" : rotulo}
-    </Button>
-  );
 }
 
 function Pessoa({ perfil, voce }: { perfil: Perfil; voce: boolean }) {
@@ -248,10 +223,10 @@ function AbaConvites({ convites, ocupado, onCancelar }: { convites: Convite[]; o
   return (
     <div className="flex flex-col gap-4">
       <p className="max-w-prose text-sm text-muted-foreground">
-        Quem se cadastrar com um e-mail convidado entra já aprovado, com o perfil escolhido. Envie o link de cadastro para a pessoa.
+        O convite chega por e-mail. Ao abrir o link e criar a senha, a pessoa entra já aprovada, com o perfil escolhido.
       </p>
       {convites.length === 0 ? (
-        <Vazio texto="Nenhum convite aguardando cadastro." />
+        <Vazio texto="Nenhum convite aguardando resposta." />
       ) : (
         <ul className="flex flex-col divide-y overflow-hidden rounded-lg border bg-card">
           {convites.map((convite) => (
@@ -261,10 +236,9 @@ function AbaConvites({ convites, ocupado, onCancelar }: { convites: Convite[]; o
                   <span className="truncate font-medium">{convite.email}</span>
                   <Badge variant="secondary">{PAPEL[convite.papel]}</Badge>
                 </p>
-                <p className="text-xs text-muted-foreground">Convidado em {dataHora.format(new Date(convite.criadoEm))}. Aguardando cadastro.</p>
+                <p className="text-xs text-muted-foreground">Convidado em {dataHora.format(new Date(convite.criadoEm))}. Aguardando a pessoa abrir o e-mail.</p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <BotaoCopiar texto={linkCadastro()} rotulo="Copiar link de cadastro" />
                 <Button
                   size="sm"
                   variant="outline"
@@ -387,11 +361,11 @@ function DialogoConvite({
     setBusy(true);
     setErro("");
     try {
-      const convite = await criarConvite(getSupabase(), email, papel);
+      const convite = await convidarUsuario(getSupabase(), email, papel);
       setFeito(convite);
       onConvidado(convite);
     } catch (e) {
-      setErro(e instanceof Error ? e.message : "Não foi possível registrar o convite.");
+      setErro(e instanceof Error ? e.message : "Não foi possível enviar o convite.");
     } finally {
       setBusy(false);
     }
@@ -403,18 +377,12 @@ function DialogoConvite({
         {feito ? (
           <>
             <DialogHeader>
-              <DialogTitle>Convite registrado</DialogTitle>
+              <DialogTitle>Convite enviado</DialogTitle>
               <DialogDescription>
-                Envie o link abaixo para <strong className="font-medium text-foreground">{feito.email}</strong>. Ao se cadastrar com esse e-mail, a pessoa entra já
-                aprovada como {PAPEL[feito.papel].toLowerCase()}.
+                O Supabase enviou um e-mail para <strong className="font-medium text-foreground">{feito.email}</strong>. Ao abrir o link e criar a senha, a pessoa
+                entra já aprovada como {PAPEL[feito.papel].toLowerCase()}. Se o e-mail não chegar, peça para conferir a caixa de spam.
               </DialogDescription>
             </DialogHeader>
-            <div className="flex flex-col gap-2 rounded-md border bg-muted/60 p-3">
-              <code className="text-sm break-all">{linkCadastro()}</code>
-              <div>
-                <BotaoCopiar texto={linkCadastro()} />
-              </div>
-            </div>
             <DialogFooter>
               <Button type="button" onClick={fechar}>Concluir</Button>
             </DialogFooter>
@@ -423,7 +391,7 @@ function DialogoConvite({
           <form className="grid gap-4" onSubmit={convidar} noValidate>
             <DialogHeader>
               <DialogTitle>Convidar usuário</DialogTitle>
-              <DialogDescription>A pessoa se cadastra pelo link do sistema e entra sem precisar de aprovação.</DialogDescription>
+              <DialogDescription>O sistema envia um e-mail de convite. A pessoa cria a própria senha pelo link e entra sem precisar de aprovação.</DialogDescription>
             </DialogHeader>
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium" htmlFor={emailId}>E-mail</label>
@@ -432,8 +400,8 @@ function DialogoConvite({
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium" htmlFor={papelId}>Perfil</label>
               <NativeSelect id={papelId} value={papel} onChange={(e) => setPapel(e.target.value as PapelPerfil)}>
-                <option value="usuario">Usuário: consulta e importa dados</option>
-                <option value="admin">Administrador: também gerencia acessos</option>
+                <option value="usuario">Usuário: consulta os dados</option>
+                <option value="admin">Administrador: também importa dados e gerencia acessos</option>
               </NativeSelect>
             </div>
             {erro && (
@@ -446,7 +414,7 @@ function DialogoConvite({
               <Button variant="outline" type="button" onClick={fechar} disabled={busy}>Cancelar</Button>
               <Button type="submit" disabled={busy || email.trim() === ""}>
                 {busy ? <Loader2 className="animate-spin" aria-hidden="true" /> : <MailPlus aria-hidden="true" />}
-                Registrar convite
+                Enviar convite
               </Button>
             </DialogFooter>
           </form>
@@ -600,7 +568,7 @@ export default function GestaoUsuarios() {
         ? { titulo: "Tornar administrador?", descricao: `${nome} poderá aprovar, bloquear e convidar usuários, inclusive outros administradores.`, botao: "Tornar administrador", destrutiva: false }
         : { titulo: "Mudar para usuário?", descricao: `${nome} continua com acesso aos dados, mas não gerencia mais usuários.`, botao: "Mudar para usuário", destrutiva: false };
     }
-    return { titulo: "Cancelar convite?", descricao: `O e-mail ${confirmar.convite.email} deixa de ter acesso pré-aprovado. Se a pessoa se cadastrar, o pedido fica pendente.`, botao: "Cancelar convite", destrutiva: true };
+    return { titulo: "Cancelar convite?", descricao: `O e-mail ${confirmar.convite.email} deixa de ter acesso pré-aprovado. Se a pessoa abrir o e-mail de convite, o acesso fica pendente de aprovação.`, botao: "Cancelar convite", destrutiva: true };
   })();
 
   return (
