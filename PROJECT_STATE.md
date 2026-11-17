@@ -4,6 +4,12 @@
 **Pasta:** `Controle_Colaboradores`  
 **Plano:** [controle-colaboradores.md](./controle-colaboradores.md)
 
+## 2026-11-17 (tarde): planilhas por tela + INCIDENTE LGPD — LEIA PRIMEIRO
+- **Incidente:** `ARQUIVOS DE EXEMPLO/GERAL ECIDADE.csv` (relatório DEMITIDOS, 3.420 nomes) e `TABELA SALARIAL.xlsx` foram enviados ao repositório público em `e852c9c` (publicado como `9e950e0`). Histórico local reescrito (main limpa, `.gitignore` cobre a pasta e *.xlsx/*.xlsm). **Pendente:** o usuário rodar `git push --force-with-lease=main:9e950e06eb18ac40e274311090517e3181966fe7 origin main` (bloqueado para o Claude) e pedir ao suporte do GitHub a remoção do cache do commit antigo. `publish_github.py` agora bloqueia planilhas em commits não enviados.
+- O CSV ADMITIDOS (971 registros) que o usuário colocou na pasta sumiu do disco; restaurado só o DEMITIDOS como `GERAL ECIDADE - DEMITIDOS (restaurado).csv`. Pedir ao usuário para recolocar o ADMITIDOS.
+- Commit local `99f4797`: e-Cidade → só Painel (só 282/16 ativos; aviso de relatório DEMITIDOS); Cadastro funcional → só Funcionários (abas por nome, subtotais COM/TER/Total, custo mensal, conferência com tabela Terceirizado); tabela salarial com avisos. Análise: `docs/ANALISE-ARQUIVOS-2026-11-17.md`. Testes 86/87 com arquivos reais (a falha é só a contagem esperada 971 contra o CSV de demitidos).
+- KPIs propostos pelo idealizador (aguardam escolha): 1 lotação, 2 movimentação mensal, 3 custo com alimentação (recomendados); Indicação = dado sensível, só agregado para admin e com finalidade confirmada.
+
 ## 2026-11-17: segurança A2/A3 + LGPD (branch `fix/seguranca-lgpd`, commit `e852c9c`; PUBLICADO em 2026-11-17 como `9e950e0`, deployment success, HTTP 200)
 - A2: só admin grava `datasets`/`configuracoes` (RLS); interface somente leitura para não admin. A3: convite pela Edge Function `supabase/functions/convidar-usuario` (`inviteUserByEmail`); convite só aprova conta criada por convite, com e-mail confirmado e sem senha prévia. Reteste de segurança APROVADO (seção em `docs/SEGURANCA-2026-11-16.md`).
 - LGPD: rota `/privacidade` (contato do encarregado = placeholder em `lib/privacidade.ts`).
