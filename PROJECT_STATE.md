@@ -4,6 +4,12 @@
 **Pasta:** `Controle_Colaboradores`  
 **Plano:** [controle-colaboradores.md](./controle-colaboradores.md)
 
+## 2026-11-17: segurança A2/A3 + LGPD (branch `fix/seguranca-lgpd`, commit `e852c9c`, NÃO publicado)
+- A2: só admin grava `datasets`/`configuracoes` (RLS); interface somente leitura para não admin. A3: convite pela Edge Function `supabase/functions/convidar-usuario` (`inviteUserByEmail`); convite só aprova conta criada por convite, com e-mail confirmado e sem senha prévia. Reteste de segurança APROVADO (seção em `docs/SEGURANCA-2026-11-16.md`).
+- LGPD: rota `/privacidade` (contato do encarregado = placeholder em `lib/privacidade.ts`).
+- **Antes/junto da publicação o usuário precisa:** rodar `supabase/schema.sql` de novo no SQL Editor e implantar a função `convidar-usuario` (Verify JWT ligado) — ver `docs/SUPABASE.md`.
+- Teste com arquivos reais (sem login): 3.420 registros no e-Cidade, mas TODOS com data de rescisão → painel mostra 0 ativos hoje; a planilha leu 12 comissionados e 0 terceirizados; não existe arquivo de tabela salarial real (o cabeçalho com Matrícula é recusado). Decisões pendentes do usuário: uso da remuneração dos terceirizados e regra de soma da tela Funcionários.
+
 ## 2026-11-17: push de `2cffa14` (só docs), deployment success, smoke HTTP 200. Usuário confirmou Site URL/Redirect URLs e conferência de perfis/convites: feitos e funcionais.
 
 ## Publicado em 2026-11-16 (`d599b18`) — LEIA PRIMEIRO
