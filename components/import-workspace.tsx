@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useAuth } from "@/components/auth-gate";
+import { isSupabaseConfigured } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { detectKind, importFile, ImportFileError } from "@/lib/import";
 import type { AnyImportResult, AnyStoredDataset, ImportKind } from "@/lib/import";
@@ -273,6 +275,9 @@ function ImportCard({
 }
 
 export default function ImportWorkspace() {
+  const { isAdmin } = useAuth();
+  // Com Supabase, só administradores importam/limpam (o banco também bloqueia). Sem Supabase, tudo liberado.
+  const somenteLeitura = isSupabaseConfigured() && !isAdmin;
   const [slots, setSlots] = useState<Record<ImportKind, Slot>>(EMPTY_SLOTS);
   const [existing, setExisting] = useState<Record<ImportKind, ExistingInfo>>(NO_EXISTING);
   const [storageError, setStorageError] = useState("");
@@ -341,7 +346,7 @@ export default function ImportWorkspace() {
 
   /** origin = cartão de onde veio a seleção; o cartão da tabela salarial força esse tipo. */
   function handleFiles(files: File[], origin?: ImportKind) {
-    if (files.length === 0) return;
+    if (files.length === 0 || somenteLeitura) return;
     setDone(null);
     setNotice("");
     setGlobalError("");
@@ -460,6 +465,13 @@ export default function ImportWorkspace() {
         </div>
       </header>
 
+      {somenteLeitura && (
+        <Alert variant="info" role="status">
+          <Info aria-hidden="true" />
+          <AlertDescription className="text-foreground">Somente administradores podem importar ou alterar dados.</AlertDescription>
+        </Alert>
+      )}
+
       <ol className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-0" aria-label="Etapas da importação">
         {STEPS.map((label, index) => {
           const number = index + 1;
@@ -496,7 +508,7 @@ export default function ImportWorkspace() {
             slot={slots[kind]}
             existing={existing[kind]}
             dragging={dragging}
-            disabled={saving}
+            disabled={saving || somenteLeitura}
             onFiles={(files) => onCardFiles(kind, files)}
           />
         ))}
@@ -553,7 +565,7 @@ export default function ImportWorkspace() {
               ? "Selecione um ou mais arquivos para reimportar. Cada tipo pode ser importado sozinho."
               : `${readyKinds.length === 1 ? "1 arquivo pronto" : `${readyKinds.length} arquivos prontos`}. Ao importar, os registros são gravados${storageMode() === "supabase" ? " no Supabase" : " neste navegador"}.`}
         </p>
-        <Button size="lg" type="button" onClick={onImportClick} disabled={!canImport || saving || anyReading}>
+        <Button size="lg" type="button" onClick={onImportClick} disabled={somenteLeitura || !canImport || saving || anyReading}>
           {saving && <Loader2 className="animate-spin" aria-hidden="true" />}
           Importar arquivos
         </Button>
@@ -561,7 +573,7 @@ export default function ImportWorkspace() {
 
       <div className="flex flex-col gap-2 border-t pt-5 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
         <p>Esta tela mostra só o resumo da importação, sem dados de pessoas.</p>
-        <Button variant="ghost" className="self-start text-destructive hover:bg-destructive/10 hover:text-destructive sm:self-auto" type="button" onClick={() => setClearOpen(true)}>
+        <Button variant="ghost" className="self-start text-destructive hover:bg-destructive/10 hover:text-destructive sm:self-auto" type="button" disabled={somenteLeitura} onClick={() => setClearOpen(true)}>
           <Trash2 aria-hidden="true" />
           Limpar dados importados
         </Button>

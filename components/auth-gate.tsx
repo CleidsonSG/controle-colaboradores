@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { CircleAlert, Clock, KeyRound, Loader2, LockKeyhole, LogOut, MailCheck, RefreshCw, ShieldX, UserPlus, Users } from "lucide-react";
@@ -46,6 +48,9 @@ function Moldura({ children }: { children: ReactNode }) {
           </div>
         </div>
         {children}
+        <p className="text-center text-xs text-muted-foreground">
+          <Link className="underline underline-offset-4 hover:text-foreground" href="/privacidade">Aviso de privacidade</Link>
+        </p>
       </div>
     </main>
   );
@@ -409,6 +414,16 @@ function Verificando({ texto }: { texto: string }) {
 
 type EstadoPerfil = { status: "carregando" } | { status: "ok"; perfil: Perfil | null } | { status: "erro" };
 
+// Retorno do link do e-mail de convite (#access_token=...&type=invite). Lido ao carregar o módulo, antes de o cliente
+// do Supabase processar e limpar o endereço; nesse caso a pessoa define a senha antes de entrar no sistema.
+// Vale uma vez só: depois de mostrar a tela, outros eventos de login não a reabrem.
+let conviteAguardandoSenha =
+  typeof window !== "undefined" &&
+  (() => {
+    const hash = new URLSearchParams(window.location.hash.slice(1));
+    return hash.get("type") === "invite" && hash.has("access_token");
+  })();
+
 function SupabaseGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
   // Link de cadastro enviado no convite (?cadastro=1) abre direto em "Solicitar acesso".
@@ -428,7 +443,9 @@ function SupabaseGate({ children }: { children: ReactNode }) {
       if (active) setSession(data.session);
     });
     const { data } = supabase.auth.onAuthStateChange((event, next) => {
-      if (event === "PASSWORD_RECOVERY") setRecuperando(true);
+      const definirSenhaDoConvite = conviteAguardandoSenha && next !== null && (event === "SIGNED_IN" || event === "INITIAL_SESSION");
+      if (definirSenhaDoConvite) conviteAguardandoSenha = false;
+      if (event === "PASSWORD_RECOVERY" || definirSenhaDoConvite) setRecuperando(true);
       setSession(next);
     });
     return () => {
@@ -508,6 +525,9 @@ function SupabaseGate({ children }: { children: ReactNode }) {
 
 /** Com Supabase configurado, exige login e aprovação antes de mostrar o sistema. Sem Supabase, os dados ficam no navegador e não há login. */
 export default function AuthGate({ children }: { children: ReactNode }) {
+  // O aviso de privacidade é público: abre sem login.
+  const pathname = usePathname();
+  if ((pathname ?? "").replace(/\/+$/, "") === "/privacidade") return <>{children}</>;
   if (!isSupabaseConfigured()) return <>{children}</>;
   return <SupabaseGate>{children}</SupabaseGate>;
 }

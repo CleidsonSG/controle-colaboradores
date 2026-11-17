@@ -13,13 +13,16 @@ type DatasetRow = {
   warnings: AnyStoredDataset["warnings"];
 };
 
-function fail(action: string): never {
+const SEM_PERMISSAO = "42501";
+
+function fail(action: string, code?: string): never {
+  if (code === SEM_PERMISSAO) throw new Error("Só administradores podem importar, apagar ou alterar os dados.");
   throw new Error(`Não foi possível ${action} no Supabase.`);
 }
 
 /**
  * Armazenamento no Supabase (tabelas `datasets` e `configuracoes`, ver supabase/schema.sql).
- * O acesso depende de login: as regras (RLS) só liberam usuários autenticados.
+ * As regras (RLS) liberam a leitura para usuários aprovados e a gravação só para administradores.
  */
 export function createSupabaseStore(supabase: SupabaseClient): DataStore {
   async function load(kind: ImportKind): Promise<AnyStoredDataset | null> {
@@ -50,11 +53,11 @@ export function createSupabaseStore(supabase: SupabaseClient): DataStore {
         warnings: dataset.warnings,
       };
       const { error } = await supabase.from("datasets").upsert(row, { onConflict: "kind" });
-      if (error) fail("gravar os dados");
+      if (error) fail("gravar os dados", error.code);
     },
     async clear(kind) {
       const { error } = await supabase.from("datasets").delete().in("kind", kind ? [kind] : KINDS);
-      if (error) fail("apagar os dados");
+      if (error) fail("apagar os dados", error.code);
     },
     async loadSettings() {
       const { data, error } = await supabase.from("configuracoes").select("teto_folha_centavos").eq("id", 1).maybeSingle<{ teto_folha_centavos: number | null }>();
@@ -63,7 +66,7 @@ export function createSupabaseStore(supabase: SupabaseClient): DataStore {
     },
     async saveSettings(settings) {
       const { error } = await supabase.from("configuracoes").upsert({ id: 1, teto_folha_centavos: settings.tetoFolha }, { onConflict: "id" });
-      if (error) fail("gravar as configurações");
+      if (error) fail("gravar as configurações", error.code);
     },
   };
 }

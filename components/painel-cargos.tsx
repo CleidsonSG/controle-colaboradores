@@ -11,9 +11,11 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/components/auth-gate";
 import { useDadosImportados } from "@/components/use-dados-importados";
 import { apurar, type Apuracao, type CargoApurado } from "@/lib/folha/apuracao";
 import { parseMoney } from "@/lib/import/text";
+import { isSupabaseConfigured } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 const moeda = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
@@ -67,11 +69,15 @@ function filtrar(cargos: CargoApurado[], filtro: Filtro, busca: string): CargoAp
 
 function TetoFolha({ teto, onSalvar }: { teto: number | null; onSalvar: (centavos: number | null) => Promise<void> }) {
   const id = useId();
+  const { isAdmin } = useAuth();
+  // Com Supabase, só administradores alteram o teto (o banco também bloqueia). Sem Supabase, tudo liberado.
+  const somenteLeitura = isSupabaseConfigured() && !isAdmin;
   const [valor, setValor] = useState(teto === null ? "" : (teto / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 }));
   const [estado, setEstado] = useState<{ tipo: "ok" | "erro" | "salvando"; texto: string } | null>(null);
 
   async function salvar(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (somenteLeitura) return;
     const texto = valor.trim();
     const lido = texto === "" ? { value: null, invalid: false } : parseMoney(texto);
     if (lido.invalid || (lido.value !== null && lido.value < 0)) {
@@ -99,6 +105,7 @@ function TetoFolha({ teto, onSalvar }: { teto: number | null; onSalvar: (centavo
             className="pl-9 font-semibold tabular-nums"
             placeholder="100.000,00"
             value={valor}
+            readOnly={somenteLeitura}
             aria-describedby={`${id}-estado`}
             onChange={(event) => {
               setValor(event.target.value);
@@ -106,13 +113,13 @@ function TetoFolha({ teto, onSalvar }: { teto: number | null; onSalvar: (centavo
             }}
           />
         </div>
-        <Button type="submit" variant="outline" disabled={estado?.tipo === "salvando"}>
+        <Button type="submit" variant="outline" disabled={somenteLeitura || estado?.tipo === "salvando"}>
           {estado?.tipo === "salvando" && <Loader2 className="animate-spin" aria-hidden="true" />}
           Salvar
         </Button>
       </div>
       <p id={`${id}-estado`} className={cn("min-h-5 text-sm", estado?.tipo === "erro" ? "text-destructive" : "text-muted-foreground")} role="status">
-        {estado?.texto ?? (teto === null ? "Informe o valor liberado para a folha." : "")}
+        {somenteLeitura ? "Somente administradores podem importar ou alterar dados." : (estado?.texto ?? (teto === null ? "Informe o valor liberado para a folha." : ""))}
       </p>
     </form>
   );
