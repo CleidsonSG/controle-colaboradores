@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import CustoAlimentacao from "@/components/custo-alimentacao";
+import EmployeeHistoryDialog from "@/components/employee-history-dialog";
 import DataTable, { formatMoney, type Column } from "@/components/data-table";
 import { getDataStore, storageMode } from "@/lib/storage";
 import { conciliarRemuneracao, divergenciasParaCsv, DIVERGENCIAS_CSV_HEADERS, type Conciliacao } from "@/lib/folha/conciliacao";
@@ -43,7 +44,8 @@ function diferencaDaLinha(row: ColaboradorPlanilha): number | null {
   return (Math.round(row.remuneracao * 100) - Math.round(row.remuneracaoTabela * 100)) / 100;
 }
 
-export const PLANILHA_COLUMNS: Column<ColaboradorPlanilha>[] = [
+function criarColunas(abrirHistorico: (row: ColaboradorPlanilha, gatilho: HTMLElement) => void): Column<ColaboradorPlanilha>[] {
+  return [
   {
     key: "matricula",
     header: "Matrícula",
@@ -60,10 +62,30 @@ export const PLANILHA_COLUMNS: Column<ColaboradorPlanilha>[] = [
       </span>
     ),
   },
-  { key: "servidor", header: "Servidor", value: (row) => row.servidor },
+  {
+    key: "servidor",
+    header: "Servidor",
+    value: (row) => row.servidor,
+    render: (row) => (
+      <span className="block min-w-64 whitespace-normal break-normal">
+        <button
+          type="button"
+          className="rounded-sm text-left font-medium text-primary underline-offset-4 hover:underline"
+          onClick={(event) => abrirHistorico(row, event.currentTarget)}
+        >
+          {row.servidor}
+        </button>
+      </span>
+    ),
+  },
   { key: "empresa", header: "Empresa/Secretaria", value: (row) => row.empresaSecretaria },
   { key: "lotacao", header: "Lotação", value: (row) => row.lotacao },
-  { key: "funcao", header: "Função", value: (row) => row.funcao },
+  {
+    key: "funcao",
+    header: "Função",
+    value: (row) => row.funcao,
+    render: (row) => <span className="block min-w-56 whitespace-normal break-normal">{row.funcao}</span>,
+  },
   { key: "remuneracao", header: "Remuneração informada (R$)", kind: "money", value: (row) => row.remuneracao },
   { key: "remuneracaoTabela", header: "Remuneração (tabela) (R$)", kind: "money", value: (row) => row.remuneracaoTabela ?? null },
   { key: "diferenca", header: "Diferença (R$)", kind: "money", value: (row) => diferencaDaLinha(row) },
@@ -76,7 +98,8 @@ export const PLANILHA_COLUMNS: Column<ColaboradorPlanilha>[] = [
   { key: "alimentacao", header: "Alimentação (R$)", kind: "money", value: (row) => row.alimentacao },
   { key: "custo", header: "Custo mensal (R$)", kind: "money", value: (row) => custoMensal(row) },
   { key: "origem", header: "Origem", value: (row) => row.origem },
-];
+  ];
+}
 
 const reais = (centavos: number) => formatMoney(centavos / 100);
 
@@ -114,7 +137,7 @@ function ImportInfo({ dataset }: { dataset: StoredDataset<unknown> }) {
     <p className="flex items-center gap-2 text-sm text-muted-foreground">
       <FileSpreadsheet className="size-4 shrink-0" aria-hidden="true" />
       <span>
-        <span className="font-medium text-foreground">{dataset.fileName}</span>
+        <span className="font-medium text-foreground">{dataset.fileName.replace(/\.[^./\\]+$/, "")}</span>
         {when ? <>, importado em {when}</> : null}
       </span>
     </p>
@@ -189,22 +212,30 @@ function PlanilhaPanel({ dataset }: { dataset: StoredDataset<ColaboradorPlanilha
   const [empresa, setEmpresa] = useState("");
   const [funcao, setFuncao] = useState("");
   const [origem, setOrigem] = useState("");
-  const [situacao, setSituacao] = useState("");
-
-  const situacoes = useMemo(
-    () => unique(dataset.records.flatMap((row) => (row.situacaoRemuneracao ? [SITUACAO[row.situacaoRemuneracao].label] : []))),
-    [dataset],
+  const [aberto, setAberto] = useState<{ row: ColaboradorPlanilha; gatilho: HTMLElement } | null>(null);
+  const [gatilho, setGatilho] = useState<HTMLElement | null>(null);
+  const colunas = useMemo(
+    () =>
+      criarColunas((row, alvo) => {
+        setGatilho(alvo);
+        setAberto({ row, gatilho: alvo });
+      }),
+    [],
   );
+  // Sem banco de histórico: o período atual vem da data de importação do cadastro.
+  const competencia = useMemo(() => {
+    const data = new Date(dataset.importedAt);
+    return Number.isNaN(data.getTime()) ? "" : `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, "0")}`;
+  }, [dataset.importedAt]);
   const empresas = useMemo(() => unique(dataset.records.map((row) => row.empresaSecretaria)), [dataset]);
   const funcoes = useMemo(() => unique(dataset.records.map((row) => row.funcao)), [dataset]);
   const origens = useMemo(() => unique(dataset.records.map((row) => row.origem)), [dataset]);
   const rows = useMemo(
     () =>
       dataset.records.filter(
-        (row) => (!empresa || row.empresaSecretaria === empresa) && (!funcao || row.funcao === funcao) && (!origem || row.origem === origem) &&
-        (!situacao || (row.situacaoRemuneracao !== undefined && SITUACAO[row.situacaoRemuneracao].label === situacao)),
+        (row) => (!empresa || row.empresaSecretaria === empresa) && (!funcao || row.funcao === funcao) && (!origem || row.origem === origem),
       ),
-    [dataset, empresa, funcao, origem, situacao],
+    [dataset, empresa, funcao, origem],
   );
 
   return (
@@ -214,11 +245,16 @@ function PlanilhaPanel({ dataset }: { dataset: StoredDataset<ColaboradorPlanilha
         <FilterSelect label="Empresa/Secretaria" value={empresa} options={empresas} onChange={setEmpresa} />
         <FilterSelect label="Função" value={funcao} options={funcoes} onChange={setFuncao} />
         <FilterSelect label="Origem" value={origem} options={origens} onChange={setOrigem} />
-        {situacoes.length > 0 && <FilterSelect label="Situação" value={situacao} options={situacoes} onChange={setSituacao} />}
       </FilterBar>
+      <EmployeeHistoryDialog
+        pessoa={aberto?.row ?? null}
+        competencia={competencia}
+        retorno={gatilho}
+        onClose={() => setAberto(null)}
+      />
       <DataTable
         caption="Funcionários: comissionados e terceirizados"
-        columns={PLANILHA_COLUMNS}
+        columns={colunas}
         rows={rows}
         rowKey={(row) => `${row.origem}-${row.linha}-${row.matricula}`}
         exportFileName="funcionarios.csv"
@@ -255,25 +291,15 @@ function KpiLoading() {
   );
 }
 
-function KpiStrip({ planilha, conciliacao }: { planilha: StoredDataset<ColaboradorPlanilha> | null; conciliacao: Conciliacao | null }) {
+function KpiStrip({ planilha }: { planilha: StoredDataset<ColaboradorPlanilha> | null }) {
   const dash = "—";
   const totais = planilha ? subtotais(planilha.records) : null;
-  const divergentes = conciliacao?.resumo.porSituacao.diverge ?? 0;
   return (
-    <dl className={cn(KPI_GRID, conciliacao && "lg:grid-cols-5")} aria-label="Indicadores do cadastro funcional">
+    <dl className={KPI_GRID} aria-label="Indicadores do cadastro funcional">
       <Kpi label="Comissionados" value={totais ? formatInt(totais.comissionados.quantidade) : dash} />
       <Kpi label="Terceirizados" value={totais ? formatInt(totais.terceirizados.quantidade) : dash} />
       <Kpi wide money label="Soma de remuneração" value={totais ? reais(totais.total.remuneracao) : dash} note={totais ? "Valor informado pela empresa" : undefined} />
       <Kpi wide money label="Custo mensal total" value={totais ? reais(totais.total.custo) : dash} note={totais ? "Remuneração informada + alimentação" : undefined} />
-      {conciliacao && (
-        <Kpi
-          wide
-          money
-          label="Diferença informado x tabela"
-          value={reais(conciliacao.resumo.diferencaTotal)}
-          note={`${divergentes === 0 ? "Nenhuma pessoa" : `${formatInt(divergentes)} ${divergentes === 1 ? "pessoa" : "pessoas"}`} com valor diferente. Não altera o custo.`}
-        />
-      )}
     </dl>
   );
 }
@@ -456,11 +482,11 @@ export default function EmployeesView() {
       <header className="flex flex-col gap-1.5">
         <h1 className="text-2xl font-semibold tracking-tight">Funcionários</h1>
         <p className="max-w-prose text-muted-foreground">
-          Comissionados e terceirizados do Cadastro funcional (planilha Excel).{storageMode() === "local" ? " Os dados ficam só neste navegador." : ""}
+          Comissionados e terceirizados.{storageMode() === "local" ? " Os dados ficam só neste navegador." : ""}
         </p>
       </header>
 
-      {state.status === "loading" ? <KpiLoading /> : state.status === "ready" ? <KpiStrip planilha={conciliado?.planilha ?? null} conciliacao={conciliado?.conciliacao ?? null} /> : null}
+      {state.status === "loading" ? <KpiLoading /> : state.status === "ready" ? <KpiStrip planilha={conciliado?.planilha ?? null} /> : null}
 
       {conciliado && <CustoAlimentacao rows={conciliado.planilha.records} />}
 

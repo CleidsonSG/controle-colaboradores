@@ -50,7 +50,7 @@ export default function CustoAlimentacao({ rows }: { rows: ColaboradorPlanilha[]
     <Card className="gap-5">
       <CardHeader>
         <CardTitle>Custo com alimentação</CardTitle>
-        <CardDescription>Remuneração mais alimentação por mês, a partir do Cadastro funcional.</CardDescription>
+        <CardDescription>Remuneração mais alimentação</CardDescription>
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="total">
