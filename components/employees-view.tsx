@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { CircleAlert, FileSpreadsheet, TriangleAlert, Upload } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +18,7 @@ import { getDataStore, storageMode } from "@/lib/storage";
 import { agregarPorFuncao, conciliarRemuneracao, precisaAtencao, type Conciliacao, type FuncaoConferida, type SituacaoFuncao } from "@/lib/folha/conciliacao";
 import { custoMensal, subtotais, type Soma } from "@/lib/folha/funcionarios";
 import ConferenciaDetalheDialog from "@/components/conferencia-detalhe-dialog";
+import TerceirizadosPorEmpresa from "@/components/terceirizados-por-empresa";
 import ExportButtons from "@/components/export-buttons";
 import { tabelaDivergencias } from "@/lib/export-funcionarios";
 import type { CargoSalario, ColaboradorPlanilha, SituacaoRemuneracao, StoredDataset } from "@/lib/import";
@@ -176,7 +177,7 @@ function SomaHead({ first }: { first: string }) {
   );
 }
 
-/** Subtotais das linhas visíveis (respeitam busca e filtros): comissionados, terceirizados, total e terceirizados por empresa. */
+/** Subtotais das linhas visíveis (respeitam busca e filtros): comissionados, terceirizados e total. Por empresa: ver TerceirizadosPorEmpresa. */
 function SubtotaisPanel({ rows }: { rows: ColaboradorPlanilha[] }) {
   const totais = useMemo(() => subtotais(rows), [rows]);
   return (
@@ -192,19 +193,6 @@ function SubtotaisPanel({ rows }: { rows: ColaboradorPlanilha[] }) {
           </TableBody>
         </Table>
       </div>
-      {totais.porEmpresa.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border">
-          <Table>
-            <caption className="sr-only">Subtotais dos terceirizados por empresa</caption>
-            <SomaHead first="Terceirizados por empresa" />
-            <TableBody>
-              {totais.porEmpresa.map((item) => (
-                <SomaRow key={item.empresa} label={item.empresa} soma={item} />
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
       <p className="text-sm text-muted-foreground">Custo mensal = remuneração + alimentação. Linhas com R$ 0,00 contam na quantidade.</p>
     </div>
   );
@@ -216,6 +204,15 @@ function PlanilhaPanel({ dataset }: { dataset: StoredDataset<ColaboradorPlanilha
   const [origem, setOrigem] = useState("");
   const [aberto, setAberto] = useState<{ row: ColaboradorPlanilha; gatilho: HTMLElement } | null>(null);
   const [gatilho, setGatilho] = useState<HTMLElement | null>(null);
+  const tabelaRef = useRef<HTMLDivElement>(null);
+  // R13: empresa clicada (gráfico ou tabela) vira o filtro da tabela de funcionários e a tela rola até ela.
+  function abrirEmpresa(nome: string) {
+    setEmpresa(nome);
+    requestAnimationFrame(() => {
+      tabelaRef.current?.scrollIntoView({ block: "start" });
+      tabelaRef.current?.focus({ preventScroll: true });
+    });
+  }
   const colunas = useMemo(
     () =>
       criarColunas((row, alvo) => {
@@ -243,6 +240,8 @@ function PlanilhaPanel({ dataset }: { dataset: StoredDataset<ColaboradorPlanilha
   return (
     <>
       <ImportInfo dataset={dataset} />
+      <TerceirizadosPorEmpresa rows={dataset.records} empresaFiltrada={empresa} onAbrirEmpresa={abrirEmpresa} />
+      <div ref={tabelaRef} tabIndex={-1} className="flex scroll-mt-4 flex-col gap-6 outline-none">
       <FilterBar>
         <FilterSelect label="Empresa/Secretaria" value={empresa} options={empresas} onChange={setEmpresa} />
         <FilterSelect label="Função" value={funcao} options={funcoes} onChange={setFuncao} />
@@ -263,6 +262,7 @@ function PlanilhaPanel({ dataset }: { dataset: StoredDataset<ColaboradorPlanilha
         exportTitle="Funcionários: comissionados e terceirizados"
         footer={(visible) => <SubtotaisPanel rows={visible} />}
       />
+      </div>
     </>
   );
 }
