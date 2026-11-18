@@ -92,7 +92,10 @@ declare
   v_total integer;
 begin
   if not public.is_admin() then
-    raise exception 'Só administradores podem importar.' using errcode = '42501';
+    raise exception 'Só administradores podem gravar o histórico.' using errcode = '42501';
+  end if;
+  if pg_catalog.pg_column_size(p_retratos) > 15000000 then
+    raise exception 'Arquivo grande demais para o histórico.' using errcode = '22023';
   end if;
   if p_competencia is null or extract(day from p_competencia) <> 1 then
     raise exception 'Informe a competência (mês/ano) deste cadastro.' using errcode = '22023';
@@ -109,7 +112,7 @@ begin
   end if;
 
   insert into public.historico_competencias (competencia, arquivo, importado_em, total)
-  values (p_competencia, p_arquivo, coalesce(p_importado_em, pg_catalog.now()), v_total)
+  values (p_competencia, p_arquivo, least(coalesce(p_importado_em, pg_catalog.now()), pg_catalog.now()), v_total)
   on conflict (competencia) do update
     set arquivo = excluded.arquivo, importado_em = excluded.importado_em, total = excluded.total;
 
@@ -143,7 +146,7 @@ create table if not exists public.ajustes_remuneracao (
   origem text not null check (origem in ('Comissionado', 'Terceirizado')),
   linha integer not null check (linha > 0),
   nome text not null default '' check (pg_catalog.length(nome) <= 200),
-  valor_centavos bigint not null check (valor_centavos between 0 and 100000000),
+  valor_centavos bigint not null check (valor_centavos between 1 and 100000000),
   valor_anterior_centavos bigint check (valor_anterior_centavos is null or valor_anterior_centavos >= 0),
   alterado_por uuid default auth.uid() references auth.users (id) on delete set null,
   alterado_por_nome text not null default '' check (pg_catalog.length(alterado_por_nome) <= 200),
@@ -167,6 +170,9 @@ declare
   v_item jsonb;
   v_anterior bigint;
 begin
+  if not public.is_admin() then
+    raise exception 'Só administradores podem alterar valores.' using errcode = '42501';
+  end if;
   select d.records -> new.posicao into v_item
   from public.datasets d
   where d.kind = 'planilha' and d.imported_at = new.importado_em;

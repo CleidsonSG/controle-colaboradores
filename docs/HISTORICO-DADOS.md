@@ -16,7 +16,7 @@ SQL: bloco final de [`supabase/schema.sql`](../supabase/schema.sql), igual a
 - A tela "retrato vigente" continua lendo `datasets` como hoje; o histórico só alimenta o painel "Histórico do Funcionário".
 - **RPC `substituir_historico_competencia(p_competencia date, p_arquivo text, p_importado_em timestamptz, p_retratos jsonb) → integer`**
   (`security invoker`, `search_path = ''`): numa transação faz upsert da competência, apaga os retratos dela e insere os novos.
-  Recusa competência que não seja dia 1, mês futuro (fuso `America/Sao_Paulo`), não-array ou mais de 50 000 itens.
+  Recusa competência que não seja dia 1, mês futuro (fuso `America/Sao_Paulo`), não-array, mais de 50 000 itens ou mais de 15 MB de JSON (checado só depois de confirmar administrador). `importado_em` futuro é limitado a `now()`.
   É invoker porque a RLS de admin já basta; a checagem `is_admin()` interna só dá mensagem clara.
 - Apagar uma competência: `delete from historico_competencias where competencia = ...` (cascata nos retratos).
 
@@ -29,7 +29,7 @@ SQL: bloco final de [`supabase/schema.sql`](../supabase/schema.sql), igual a
 Gatilho `preparar_ajuste_remuneracao` (before insert, invoker): recusa se a planilha atual não tiver aquele `imported_at`
 ("O cadastro funcional foi reimportado...") ou se `records[posicao]` não bater com `origem`/`linha`; valor anterior = último
 ajuste do mesmo registro ou, se não houver, `remuneracao × 100` da planilha. Sem política de `update` (auditoria imutável);
-`delete` só admin, usado por "Limpar dados importados". Limite: 0 a R$ 1.000.000,00 (a confirmação acima de R$ 100.000,00 é da UI, V3).
+`delete` só admin, usado por "Limpar dados importados". Limite: R$ 0,01 a R$ 1.000.000,00 (o gatilho também recusa quem não é administrador, 42501) (a confirmação acima de R$ 100.000,00 é da UI, V3).
 
 ## 2. Identidade e normalização (P4)
 
