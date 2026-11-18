@@ -151,3 +151,87 @@ export function divergenciasParaCsv(grupos: GrupoConciliacao[]): string[][] {
       decimal(grupo.diferencaMensal),
     ]);
 }
+
+export const MOTIVO_DIVERGE = "Valor diferente da referência";
+export const MOTIVO_NAO_INFORMADA = "Remuneração não informada";
+
+/** "sem-referencia" é só informativo (função sem valor na tabela): não conta como divergência e não abre detalhe. */
+export type SituacaoFuncao = "confere" | "diverge" | "nao-informada" | "sem-referencia";
+
+export type PendenciaFuncao = {
+  servidor: string;
+  matricula: string;
+  empresa: string;
+  /** Centavos; null = função sem valor na tabela. */
+  valorReferencia: number | null;
+  /** Centavos; null = remuneração não informada. */
+  valorInformado: number | null;
+  motivo: string;
+};
+
+export type FuncaoConferida = {
+  origem: Origem;
+  funcao: string;
+  pessoas: number;
+  /** Valor da tabela em centavos; null = sem referência. */
+  valorReferencia: number | null;
+  /** Valores informados distintos (centavos, crescente); mais de um = "Vários valores". */
+  valoresInformados: number[];
+  situacao: SituacaoFuncao;
+  /** Pessoas que divergem ou estão sem remuneração, por nome. Vazio quando não há detalhe a abrir. */
+  pendentes: PendenciaFuncao[];
+};
+
+type Acumulador = { item: FuncaoConferida; informados: Set<number>; semReferencia: boolean; diverge: number; naoInformada: number };
+
+/** Uma linha por função (e origem) para a tabela da conferência. Exige linhas já conciliadas; linhas sem situação são ignoradas. */
+export function agregarPorFuncao(rows: ColaboradorPlanilha[]): FuncaoConferida[] {
+  const mapa = new Map<string, Acumulador>();
+  for (const row of rows) {
+    const situacao = row.situacaoRemuneracao;
+    if (!situacao) continue;
+    const chave = `${row.origem}|${chaveFuncao(row.funcao)}`;
+    const acc = mapa.get(chave) ?? {
+      item: { origem: row.origem, funcao: row.funcao.trim() || SEM_FUNCAO_CONCILIACAO, pessoas: 0, valorReferencia: null, valoresInformados: [], situacao: "confere" as SituacaoFuncao, pendentes: [] },
+      informados: new Set<number>(),
+      semReferencia: false,
+      diverge: 0,
+      naoInformada: 0,
+    };
+    acc.item.pessoas += 1;
+    const informado = row.remuneracao === null ? null : centavos(row.remuneracao);
+    const referencia = row.remuneracaoTabela == null ? null : centavos(row.remuneracaoTabela);
+    if (informado !== null) acc.informados.add(informado);
+    if (referencia !== null) acc.item.valorReferencia = referencia;
+    if (situacao === "sem-valor" || situacao === "fora-da-tabela") acc.semReferencia = true;
+    if (situacao === "diverge" || situacao === "nao-informada") {
+      if (situacao === "diverge") acc.diverge += 1;
+      else acc.naoInformada += 1;
+      acc.item.pendentes.push({
+        servidor: row.servidor,
+        matricula: row.matricula,
+        empresa: row.empresaSecretaria.trim() || SEM_EMPRESA_CONCILIACAO,
+        valorReferencia: referencia,
+        valorInformado: informado,
+        motivo: situacao === "diverge" ? MOTIVO_DIVERGE : MOTIVO_NAO_INFORMADA,
+      });
+    }
+    mapa.set(chave, acc);
+  }
+  const lista = [...mapa.values()].map((acc) => {
+    const { item } = acc;
+    item.valoresInformados = [...acc.informados].sort((a, b) => a - b);
+    if (item.valorReferencia === null) {
+      item.situacao = acc.semReferencia ? "sem-referencia" : "nao-informada";
+      if (acc.semReferencia) item.pendentes = [];
+    } else {
+      item.situacao = acc.diverge > 0 ? "diverge" : acc.naoInformada > 0 ? "nao-informada" : "confere";
+    }
+    item.pendentes.sort((a, b) => porTexto(a.servidor, b.servidor));
+    return item;
+  });
+  return lista.sort((a, b) => porTexto(a.funcao, b.funcao) || porTexto(a.origem, b.origem));
+}
+
+/** Funções com pessoas a conferir (divergência ou sem remuneração): as que abrem o detalhe. */
+export const precisaAtencao = (funcao: FuncaoConferida) => funcao.situacao === "diverge" || funcao.situacao === "nao-informada";

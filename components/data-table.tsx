@@ -1,9 +1,10 @@
 "use client";
 
 import { useId, useMemo, useState, type ReactNode } from "react";
-import { buildCsvBlob } from "@/lib/export-data";
+import ExportButtons from "@/components/export-buttons";
+import type { TabelaExportacao } from "@/lib/export-funcionarios";
 import { formatDateBr } from "@/lib/import";
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Download, Search } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -54,13 +55,16 @@ type DataTableProps<T> = {
   columns: Column<T>[];
   rows: T[];
   rowKey: (row: T, index: number) => string;
+  /** Nome do arquivo exportado, sem extensão. */
   exportFileName: string;
+  /** Título dentro do arquivo exportado. */
+  exportTitle: string;
   /** Recebe as linhas após a busca (antes da paginação), para somas e rodapés. */
   footer?: (rows: T[]) => ReactNode;
   emptyMessage?: string;
 };
 
-export default function DataTable<T>({ caption, columns, rows, rowKey, exportFileName, footer, emptyMessage }: DataTableProps<T>) {
+export default function DataTable<T>({ caption, columns, rows, rowKey, exportFileName, exportTitle, footer, emptyMessage }: DataTableProps<T>) {
   const searchId = useId();
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortState>(null);
@@ -102,19 +106,19 @@ export default function DataTable<T>({ caption, columns, rows, rowKey, exportFil
     });
   }
 
-  function exportCsv() {
-    const blob = buildCsvBlob(
-      columns.map((column) => column.header),
-      sorted.map((row) => columns.map((column) => formatCell(column.kind, column.value(row)))),
-    );
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = exportFileName;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+  /** Linhas após busca e ordenação, com os cabeçalhos visíveis; moeda segue como número. */
+  function montarExportacao(): TabelaExportacao {
+    return {
+      titulo: exportTitle,
+      aba: "Funcionários",
+      colunas: columns.map((column) => ({ titulo: column.header, moeda: column.kind === "money" })),
+      linhas: sorted.map((row) =>
+        columns.map((column) => {
+          const raw = column.value(row);
+          return column.kind === "money" && typeof raw === "number" ? raw : formatCell(column.kind, raw);
+        }),
+      ),
+    };
   }
 
   const SortIcon = (active: "asc" | "desc" | null) => (active === "asc" ? ArrowUp : active === "desc" ? ArrowDown : ArrowUpDown);
@@ -139,10 +143,7 @@ export default function DataTable<T>({ caption, columns, rows, rowKey, exportFil
             />
           </div>
         </div>
-        <Button variant="outline" type="button" onClick={exportCsv} disabled={sorted.length === 0}>
-          <Download aria-hidden="true" />
-          Exportar CSV
-        </Button>
+        <ExportButtons montar={montarExportacao} nomeArquivo={exportFileName} disabled={sorted.length === 0} />
       </div>
       <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
         <span className="font-medium text-foreground tabular-nums">{sorted.length.toLocaleString("pt-BR")}</span> de{" "}

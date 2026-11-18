@@ -6,7 +6,7 @@ import { CircleAlert, FileSpreadsheet, TriangleAlert, Upload } from "lucide-reac
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -15,9 +15,11 @@ import CustoAlimentacao from "@/components/custo-alimentacao";
 import EmployeeHistoryDialog from "@/components/employee-history-dialog";
 import DataTable, { formatMoney, type Column } from "@/components/data-table";
 import { getDataStore, storageMode } from "@/lib/storage";
-import { conciliarRemuneracao, divergenciasParaCsv, DIVERGENCIAS_CSV_HEADERS, type Conciliacao } from "@/lib/folha/conciliacao";
+import { agregarPorFuncao, conciliarRemuneracao, precisaAtencao, type Conciliacao, type FuncaoConferida, type SituacaoFuncao } from "@/lib/folha/conciliacao";
 import { custoMensal, subtotais, type Soma } from "@/lib/folha/funcionarios";
-import { buildCsvBlob } from "@/lib/export-data";
+import ConferenciaDetalheDialog from "@/components/conferencia-detalhe-dialog";
+import ExportButtons from "@/components/export-buttons";
+import { tabelaDivergencias } from "@/lib/export-funcionarios";
 import type { CargoSalario, ColaboradorPlanilha, SituacaoRemuneracao, StoredDataset } from "@/lib/import";
 
 const SITUACAO: Record<SituacaoRemuneracao, { label: string; variant: "success" | "warning" | "secondary" }> = {
@@ -257,7 +259,8 @@ function PlanilhaPanel({ dataset }: { dataset: StoredDataset<ColaboradorPlanilha
         columns={colunas}
         rows={rows}
         rowKey={(row) => `${row.origem}-${row.linha}-${row.matricula}`}
-        exportFileName="funcionarios.csv"
+        exportFileName="funcionarios"
+        exportTitle="Funcionários: comissionados e terceirizados"
         footer={(visible) => <SubtotaisPanel rows={visible} />}
       />
     </>
@@ -304,16 +307,40 @@ function KpiStrip({ planilha }: { planilha: StoredDataset<ColaboradorPlanilha> |
   );
 }
 
-function baixarDivergencias(conciliacao: Conciliacao) {
-  const blob = buildCsvBlob(DIVERGENCIAS_CSV_HEADERS, divergenciasParaCsv(conciliacao.grupos));
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "divergencias-remuneracao.csv";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+const SITUACAO_FUNCAO: Record<SituacaoFuncao, { label: string; variant: "success" | "warning" | "secondary" }> = {
+  confere: { label: "Confere", variant: "success" },
+  diverge: { label: "Diverge", variant: "warning" },
+  "nao-informada": { label: "Não informada", variant: "secondary" },
+  "sem-referencia": { label: "Sem referência", variant: "secondary" },
+};
+
+function ValorInformado({ funcao }: { funcao: FuncaoConferida }) {
+  if (funcao.valoresInformados.length === 0) return <>—</>;
+  if (funcao.valoresInformados.length > 1) return <>Vários valores</>;
+  return <>{reais(funcao.valoresInformados[0] ?? 0)}</>;
+}
+
+/** Selo de situação da função: botão que abre o detalhe quando há pessoas a conferir; informativo nos demais casos. */
+function SituacaoFuncaoSelo({ funcao, onAbrir }: { funcao: FuncaoConferida; onAbrir: (funcao: FuncaoConferida, gatilho: HTMLElement) => void }) {
+  const { label, variant } = SITUACAO_FUNCAO[funcao.situacao];
+  const selo = (
+    <Badge variant={variant}>
+      {funcao.situacao === "diverge" && <TriangleAlert aria-hidden="true" />}
+      {label}
+    </Badge>
+  );
+  if (!precisaAtencao(funcao)) return selo;
+  return (
+    <button
+      type="button"
+      className="inline-flex min-h-8 items-center rounded-full"
+      aria-haspopup="dialog"
+      aria-label={`${label}: ver pessoas da função ${funcao.funcao}`}
+      onClick={(event) => onAbrir(funcao, event.currentTarget)}
+    >
+      {selo}
+    </button>
+  );
 }
 
 /** Remuneração informada (comissionados e terceirizados) x tabela salarial da Prefeitura. Só agregados; nunca nomes, matrículas ou CPF. */
@@ -335,15 +362,23 @@ function ConferenciaRemuneracao({ conciliacao }: { conciliacao: Conciliacao | nu
     );
   }
   if (conciliacao.resumo.pessoas === 0) return null;
+  return <ConferenciaCard conciliacao={conciliacao} />;
+}
+
+function ConferenciaCard({ conciliacao }: { conciliacao: Conciliacao }) {
   const { porSituacao } = conciliacao.resumo;
-  const detalhe = conciliacao.grupos.filter((grupo) => grupo.situacao === "diverge" || grupo.situacao === "sem-valor" || grupo.situacao === "fora-da-tabela");
+  const [aberta, setAberta] = useState<FuncaoConferida | null>(null);
+  const [gatilho, setGatilho] = useState<HTMLElement | null>(null);
+  const funcoes = useMemo(() => agregarPorFuncao(conciliacao.rows), [conciliacao]);
+  const nomesRepetidos = useMemo(() => {
+    const vistos = new Set<string>();
+    return new Set(funcoes.flatMap((f) => (vistos.has(f.funcao) ? [f.funcao] : (vistos.add(f.funcao), []))));
+  }, [funcoes]);
+  const pendentes = funcoes.filter(precisaAtencao);
   return (
     <Card className="gap-4">
       <CardHeader>
         <CardTitle>Conferência de remuneração</CardTitle>
-        <CardDescription>
-          A planilha da empresa prevalece: o custo usa a remuneração informada. A tabela salarial da Prefeitura é só referência de conferência.
-        </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border lg:grid-cols-4 [&>*]:bg-card">
@@ -352,53 +387,55 @@ function ConferenciaRemuneracao({ conciliacao }: { conciliacao: Conciliacao | nu
           <Kpi label="Sem valor ou fora da tabela" value={formatInt(porSituacao["sem-valor"] + porSituacao["fora-da-tabela"])} />
           <Kpi label="Remuneração não informada" value={formatInt(porSituacao["nao-informada"])} />
         </dl>
-        {detalhe.length > 0 ? (
-          <div className="max-h-96 overflow-auto rounded-lg border" tabIndex={0} role="region" aria-label="Funções com diferença ou sem valor na tabela">
-            <Table>
-              <caption className="sr-only">Comissionados e terceirizados por empresa e função com diferença ou sem valor na tabela salarial</caption>
-              <TableHeader className="sticky top-0 bg-muted/95">
-                <TableRow className="hover:bg-transparent">
-                  <TableHead scope="col">Empresa</TableHead>
-                  <TableHead scope="col">Origem</TableHead>
-                  <TableHead scope="col">Função</TableHead>
-                  <TableHead scope="col" className="text-right">Pessoas</TableHead>
-                  <TableHead scope="col" className="text-right">Valor tabela</TableHead>
-                  <TableHead scope="col" className="text-right">Valor informado</TableHead>
-                  <TableHead scope="col" className="text-right">Diferença unitária</TableHead>
-                  <TableHead scope="col" className="text-right">Diferença mensal</TableHead>
-                  <TableHead scope="col">Situação</TableHead>
+        <div className="max-h-96 overflow-auto rounded-lg border" tabIndex={0} role="region" aria-label="Conferência de remuneração por função">
+          <Table>
+            <caption className="sr-only">Funções com o valor de referência da tabela salarial, o valor informado pelas empresas e a situação</caption>
+            <TableHeader className="sticky top-0 bg-muted/95">
+              <TableRow className="hover:bg-transparent">
+                <TableHead scope="col">Função</TableHead>
+                <TableHead scope="col" className="text-right">Valor de referência</TableHead>
+                <TableHead scope="col" className="text-right">Valor informado</TableHead>
+                <TableHead scope="col">Situação</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {funcoes.map((funcao) => (
+                <TableRow key={`${funcao.origem}|${funcao.funcao}`}>
+                  <TableCell className="whitespace-normal">
+                    {funcao.funcao}
+                    {nomesRepetidos.has(funcao.funcao) && <span className="text-muted-foreground"> ({funcao.origem})</span>}
+                  </TableCell>
+                  <TableCell className="text-right whitespace-nowrap tabular-nums">{funcao.valorReferencia === null ? "—" : reais(funcao.valorReferencia)}</TableCell>
+                  <TableCell className="text-right whitespace-nowrap tabular-nums">
+                    <ValorInformado funcao={funcao} />
+                  </TableCell>
+                  <TableCell>
+                    <SituacaoFuncaoSelo
+                      funcao={funcao}
+                      onAbrir={(alvo, botao) => {
+                        setGatilho(botao);
+                        setAberta(alvo);
+                      }}
+                    />
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {detalhe.map((grupo) => (
-                  <TableRow key={`${grupo.origem}|${grupo.empresa}|${grupo.funcao}|${grupo.valorInformado}`}>
-                    <TableCell>{grupo.empresa}</TableCell>
-                    <TableCell>{grupo.origem}</TableCell>
-                    <TableCell>{grupo.funcao}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatInt(grupo.pessoas)}</TableCell>
-                    <TableCell className="text-right whitespace-nowrap tabular-nums">{grupo.valorTabela === null ? "—" : reais(grupo.valorTabela)}</TableCell>
-                    <TableCell className="text-right whitespace-nowrap tabular-nums">{grupo.valorInformado === null ? "—" : reais(grupo.valorInformado)}</TableCell>
-                    <TableCell className="text-right whitespace-nowrap tabular-nums">{grupo.diferencaUnitaria === null ? "—" : reais(grupo.diferencaUnitaria)}</TableCell>
-                    <TableCell className="text-right whitespace-nowrap tabular-nums">{grupo.diferencaMensal === null ? "—" : reais(grupo.diferencaMensal)}</TableCell>
-                    <TableCell>
-                      <SituacaoBadge situacao={grupo.situacao} />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          A planilha da empresa prevalece: o custo usa a remuneração informada. A tabela salarial da Prefeitura é só referência de conferência.
+        </p>
+        {pendentes.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Todas as funções conferem com a tabela de referência.</p>
         ) : (
-          <p className="text-sm text-muted-foreground">Todas as remunerações informadas conferem com a tabela.</p>
-        )}
-        {porSituacao.diverge > 0 && (
-          <div>
-            <Button type="button" variant="outline" onClick={() => baixarDivergencias(conciliacao)}>
-              Exportar divergências (CSV)
-            </Button>
+          <div className="flex flex-col gap-2">
+            <p className="text-sm font-medium">Exportar divergências</p>
+            <ExportButtons montar={() => tabelaDivergencias(pendentes)} nomeArquivo="divergencias-remuneracao" />
           </div>
         )}
       </CardContent>
+      <ConferenciaDetalheDialog funcao={aberta} retorno={gatilho} onClose={() => setAberta(null)} />
     </Card>
   );
 }
