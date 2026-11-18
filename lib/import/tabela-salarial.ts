@@ -37,15 +37,29 @@ function origemDaAba(nome: string, posicao: number, total: number): Origem | und
   return posicao === 0 ? "Comissionado" : posicao === 1 ? "Terceirizado" : undefined;
 }
 
-/** Junta as linhas lidas, avisando sobre funções repetidas (vale a primeira de cada aba), valores divergentes e funções sem remuneração. */
+/** Chave única de função/cargo (sem acento, caixa ou espaços repetidos) para cruzar planilha, tabela salarial e e-Cidade. */
+export function chaveFuncao(nome: string): string {
+  return normalizeHeader(nome);
+}
+
+const MAX_NOMES_AVISO = 30;
+const reaisTexto = (valor: number) => valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+function listarNomes(nomes: string[]): string {
+  const mostrados = nomes.slice(0, MAX_NOMES_AVISO).join(", ");
+  return nomes.length > MAX_NOMES_AVISO ? `${mostrados} e mais ${nomes.length - MAX_NOMES_AVISO}` : mostrados;
+}
+
+type FuncaoLida = { record: CargoSalario; invalida: boolean; valores: number[]; linhasDivergentes: number[] };
+
+/** Junta as linhas lidas: em função repetida na mesma aba vale o primeiro valor preenchido; avisa (com os nomes) valores divergentes e funções sem remuneração. */
 function finish(fileName: string, grupos: GrupoSalarial[]): ImportResult<CargoSalario> {
   const warnings: ImportWarning[] = [];
   const records: CargoSalario[] = [];
   const countsBySheet: ImportResult<CargoSalario>["countsBySheet"] = [];
   for (const grupo of grupos) {
     const collector = new WarningCollector();
-    const seen = new Map<string, number | null>();
-    let count = 0;
+    const lidas = new Map<string, FuncaoLida>();
     for (const row of grupo.rows) {
       const cargo = row.cargo.trim();
       if (cargo === "") {
@@ -54,36 +68,47 @@ function finish(fileName: string, grupos: GrupoSalarial[]): ImportResult<CargoSa
         }
         continue;
       }
-      const key = normalizeHeader(cargo);
+      const key = chaveFuncao(cargo);
       const money = parseMoney(row.salario);
       const salario = money.invalid ? null : money.value;
-      if (seen.has(key)) {
-        const first = seen.get(key) ?? null;
-        if (first === null && salario !== null) {
-          // Vale a primeira remuneração preenchida: uma repetição sem valor (ex.: ROCADOR vazio antes de ROÇADOR) não anula a função.
-          const existente = records.find((r) => r.origem === grupo.origem && normalizeHeader(r.cargo) === key);
-          if (existente) existente.salario = salario;
-          seen.set(key, salario);
-          collector.add("duplicidade", "Funções repetidas na mesma aba: foi usada a primeira remuneração preenchida.", row.linha);
-          continue;
-        }
-        if (salario !== null && first !== null && salario !== first) {
-          collector.add("valores-divergentes", "Funções repetidas com valores diferentes: foi usada a primeira remuneração encontrada.", row.linha);
-        } else {
-          collector.add("duplicidade", "Funções repetidas na mesma aba: foi usada a primeira remuneração encontrada.", row.linha);
-        }
+      const existente = lidas.get(key);
+      if (!existente) {
+        const record: CargoSalario = { cargo, salario, linha: row.linha };
+        if (grupo.origem) record.origem = grupo.origem;
+        records.push(record);
+        lidas.set(key, { record, invalida: money.invalid, valores: salario === null ? [] : [salario], linhasDivergentes: [] });
+        if (money.invalid) collector.add("valor-invalido", "Remunerações inválidas: as funções ficaram sem valor.", row.linha);
         continue;
       }
-      seen.set(key, salario);
-      if (money.invalid) collector.add("valor-invalido", "Remunerações inválidas: as funções ficaram sem valor.", row.linha);
-      else if (salario === null) collector.add("sem-valor", "Funções sem remuneração na tabela: ficam sem valor.", row.linha);
-      const record: CargoSalario = { cargo, salario, linha: row.linha };
-      if (grupo.origem) record.origem = grupo.origem;
-      records.push(record);
-      count += 1;
+      const diverge = salario !== null && existente.record.salario !== null && !existente.valores.includes(salario);
+      if (diverge) existente.linhasDivergentes.push(row.linha);
+      else collector.add("duplicidade", "Funções repetidas na mesma aba: foi usado o primeiro valor preenchido.", row.linha);
+      if (salario === null) continue;
+      if (existente.record.salario === null) existente.record.salario = salario;
+      if (!existente.valores.includes(salario)) existente.valores.push(salario);
     }
+    const lista = [...lidas.values()];
+    const semValor = lista.filter((f) => f.record.salario === null && !f.invalida);
+    const divergentes = lista.filter((f) => f.linhasDivergentes.length > 0);
     const prefix = grupos.length > 1 && grupo.sheet ? `Aba ${grupo.sheet}: ` : "";
-    for (const warning of collector.list()) warnings.push({ ...warning, message: `${prefix}${warning.message}` });
+    const extras: ImportWarning[] = [];
+    if (divergentes.length > 0) {
+      const nomes = divergentes.map((f) => `${f.record.cargo} (${f.valores.map(reaisTexto).join(" / ")})`);
+      extras.push({
+        code: "valores-divergentes",
+        message: `Funções repetidas com valores diferentes (vale o primeiro valor preenchido): ${listarNomes(nomes)}.`,
+        rows: divergentes.flatMap((f) => f.linhasDivergentes),
+      });
+    }
+    if (semValor.length > 0) {
+      extras.push({
+        code: "sem-valor",
+        message: `Funções sem remuneração na tabela (ficam sem valor): ${listarNomes(semValor.map((f) => f.record.cargo))}.`,
+        rows: semValor.map((f) => f.record.linha),
+      });
+    }
+    for (const warning of [...collector.list(), ...extras]) warnings.push({ ...warning, message: `${prefix}${warning.message}` });
+    const count = lista.length;
     if (grupo.sheet) countsBySheet.push(grupo.origem ? { sheet: grupo.sheet, origem: grupo.origem, count } : { sheet: grupo.sheet, count });
   }
   if (records.length === 0) throw new ImportFileError("vazio", "Não encontramos funções nesta tabela salarial.");

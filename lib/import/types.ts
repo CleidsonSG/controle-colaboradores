@@ -21,13 +21,20 @@ export type ServidorECidade = {
 
 export type Origem = "Comissionado" | "Terceirizado";
 
+/** Conferência da remuneração informada com a tabela salarial da Prefeitura (referência; não altera o custo). */
+export type SituacaoRemuneracao = "confere" | "diverge" | "sem-valor" | "fora-da-tabela" | "nao-informada";
+
 export type ColaboradorPlanilha = {
   matricula: string;
   servidor: string;
   empresaSecretaria: string;
   lotacao: string;
   funcao: string;
+  /** Remuneração informada na planilha da empresa: é o valor que vale (custo e totais). */
   remuneracao: number | null;
+  /** Valor da tabela salarial para a função (reais); null = sem valor ou fora da tabela. Opcional: dados antigos não têm. */
+  remuneracaoTabela?: number | null;
+  situacaoRemuneracao?: SituacaoRemuneracao;
   alimentacao: number | null;
   indicacao: string;
   origem: Origem;

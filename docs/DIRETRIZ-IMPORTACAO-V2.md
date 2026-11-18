@@ -67,3 +67,6 @@ Armazenamento: IndexedDB nativo (sem dependência nova), banco `controle-colabor
 
 ## Remover
 `LoadType`, `IMPORT_FIELDS`, `suggestMapping`, `analyzeRows`, `resolveMapping`, CPF, ano/mês/quantidade, seletor de aba, "Tipo de carga", "Associe os campos"/"Não mapeado", textos "nenhum dado será salvo"/"Nada será gravado", `buildExport*` em XLSX. Manter o item de menu "Estatísticas de Cargo" (placeholder).
+
+## Conciliação da remuneração (2026-11-18)
+A planilha da empresa prevalece: `remuneracao` é o valor informado e é o único usado no custo, nos subtotais e no custo mensal. Na importação (ao salvar a planilha, ou ao salvar a tabela salarial com a planilha já armazenada) `lib/folha/conciliacao.ts` acrescenta `remuneracaoTabela` e `situacaoRemuneracao` (confere, diverge, sem-valor, fora-da-tabela, nao-informada), comparando em centavos e usando a aba da própria origem (Comissionado ou Terceirizado); dados antigos sem esses campos são reconciliados na leitura. Na tabela salarial, função repetida na mesma aba usa o primeiro valor não vazio (`chaveFuncao` é a chave única de função) e os avisos listam os nomes das funções. Funcionários mostra as colunas de conferência, o filtro Situação, o painel "Conferência de remuneração" e o CSV `divergencias-remuneracao.csv` (agregado, sem nomes, matrícula ou CPF).

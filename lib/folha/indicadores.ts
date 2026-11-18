@@ -34,7 +34,7 @@ function mapaSalarios(tabela: CargoSalario[] | null): Map<string, number | null>
   for (const linha of tabela ?? []) {
     if (linha.origem === "Terceirizado") continue;
     const chave = chaveCargo(linha.cargo);
-    if (!salarios.has(chave)) salarios.set(chave, linha.salario === null ? null : Math.round(linha.salario * 100));
+    if (salarios.get(chave) == null) salarios.set(chave, linha.salario === null ? null : Math.round(linha.salario * 100));
   }
   return salarios;
 }

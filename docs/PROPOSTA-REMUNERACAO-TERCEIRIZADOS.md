@@ -1,5 +1,7 @@
 # Proposta: remuneração de terceirizados (tabela da Prefeitura x cadastro da empresa)
 
+> **Decisão do usuário (2026-11-18): opção (c), a planilha da empresa prevalece.** O custo (KPIs, subtotais, custo mensal) continua pelo valor **informado** na planilha. A tabela da Prefeitura serve só como **referência de conferência**: colunas "Remuneração (tabela)", "Diferença" e "Situação" (Confere, Diverge, Sem valor na tabela, Fora da tabela, Não informada), painel de conferência COM+TER e CSV de divergências sem nomes. Função sem valor na tabela: usa o informado, com selo "Sem valor na tabela". As correções técnicas da seção 3 continuam valendo (primeiro valor não vazio vence, `chaveFuncao` única, conciliação na importação), exceto o item 5: `subtotais`/`custoMensal` **não** passam a usar a tabela.
+
 Data: 2026-11-17. Somente agregados (funções, empresas, lotações, contagens). Nenhum nome, matrícula ou CPF.
 Premissas do dono do produto: o valor da TABELA SALARIAL é **salário (remuneração)**, não valor de posto; a tabela é da Prefeitura de Maricá e é a **fonte oficial**; o CADASTRO FUNCIONAL vem de cada empresa/autarquia; todo filtro e normalização acontecem **na importação**.
 

@@ -1,10 +1,9 @@
 /**
  * Cálculos da tela Funcionários (planilha de cadastro): subtotais por origem e por empresa,
- * custo mensal por pessoa e conferência da remuneração dos terceirizados com a tabela salarial.
+ * e custo mensal por pessoa. O custo usa sempre a remuneração informada na planilha da empresa; a conferência com a tabela salarial fica em conciliacao.ts.
  * Valores monetários em centavos nos totais.
  */
-import { normalizeHeader } from "../import/text.ts";
-import type { CargoSalario, ColaboradorPlanilha } from "../import/types.ts";
+import type { ColaboradorPlanilha } from "../import/types.ts";
 
 export type Soma = {
   quantidade: number;
@@ -65,52 +64,4 @@ export function subtotais(rows: ColaboradorPlanilha[]): Subtotais {
     .map(([empresa, soma]) => ({ empresa, ...soma }))
     .sort((a, b) => a.empresa.localeCompare(b.empresa, "pt-BR", { sensitivity: "base" }));
   return resultado;
-}
-
-export type ConferenciaFuncao = {
-  funcao: string;
-  pessoas: number;
-  /** Valor da aba Terceirizado em centavos; null = função sem valor (ou fora da tabela). */
-  valorTabela: number | null;
-  /** Pessoas da função com remuneração diferente do valor da tabela (0 quando a tabela não tem valor). */
-  divergentes: number;
-};
-
-export type Conferencia = {
-  terceirizados: number;
-  /** Pessoas cuja remuneração difere do valor da aba Terceirizado. */
-  divergentes: number;
-  /** Funções de terceirizados sem valor na aba Terceirizado (ausentes ou em branco). */
-  funcoesSemValor: number;
-  /** Detalhe por função, sem dados de pessoas. */
-  funcoes: ConferenciaFuncao[];
-};
-
-/** Compara a remuneração dos terceirizados com a aba Terceirizado da tabela salarial (não afeta o teto dos comissionados). */
-export function conferirTerceirizados(rows: ColaboradorPlanilha[], tabela: CargoSalario[]): Conferencia {
-  const valores = new Map<string, number | null>();
-  for (const linha of tabela) {
-    if (linha.origem !== "Terceirizado") continue;
-    const chave = normalizeHeader(linha.cargo);
-    if (!valores.has(chave)) valores.set(chave, linha.salario === null ? null : centavos(linha.salario));
-  }
-  const grupos = new Map<string, ConferenciaFuncao>();
-  let terceirizados = 0;
-  for (const row of rows) {
-    if (row.origem !== "Terceirizado") continue;
-    terceirizados += 1;
-    const chave = normalizeHeader(row.funcao);
-    const valorTabela = valores.get(chave) ?? null;
-    const grupo = grupos.get(chave) ?? { funcao: row.funcao.trim() || "Sem função informada", pessoas: 0, valorTabela, divergentes: 0 };
-    grupo.pessoas += 1;
-    if (valorTabela !== null && centavos(row.remuneracao) !== valorTabela) grupo.divergentes += 1;
-    grupos.set(chave, grupo);
-  }
-  const funcoes = [...grupos.values()].sort((a, b) => b.pessoas - a.pessoas || a.funcao.localeCompare(b.funcao, "pt-BR", { sensitivity: "base" }));
-  return {
-    terceirizados,
-    divergentes: funcoes.reduce((soma, f) => soma + f.divergentes, 0),
-    funcoesSemValor: funcoes.filter((f) => f.valorTabela === null).length,
-    funcoes,
-  };
 }

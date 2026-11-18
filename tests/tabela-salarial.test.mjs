@@ -96,3 +96,23 @@ test("repetição sem valor antes da preenchida (ROCADOR vazio, depois ROÇADOR)
   const r = parseTabelaSalarialCsv(enc(csv), "tabela.csv");
   assert.deepEqual(r.records.map((x) => [x.cargo, x.salario]), [["ROCADOR", 1851.9], ["SERVENTE", 1851.9]]);
 });
+
+test("função repetida: vazia antes da preenchida (ROCADOR/ROÇADOR) vence a preenchida e não gera aviso de sem valor", () => {
+  const csv = "FUNÇÃO;REMUNERAÇÃO\r\nROCADOR;\r\nROÇADOR;1.851,90\r\n";
+  const r = parseTabelaSalarialCsv(enc(csv), "tabela.csv");
+  assert.equal(r.records.length, 1);
+  assert.equal(r.records[0].salario, 1851.9);
+  assert.ok(!r.warnings.some((w) => w.code === "sem-valor"));
+});
+
+test("avisos trazem os nomes das funções: sem valor e repetidas com valores diferentes (com os valores)", () => {
+  const csv = "FUNÇÃO;REMUNERAÇÃO\r\nVIGIA;\r\nSERVENTE;2.000,00\r\nSERVENTE;3.000,00\r\nMOTORISTA;\r\n";
+  const r = parseTabelaSalarialCsv(enc(csv), "tabela.csv");
+  const semValor = r.warnings.find((w) => w.code === "sem-valor");
+  assert.ok(semValor.message.includes("VIGIA") && semValor.message.includes("MOTORISTA"));
+  assert.deepEqual(semValor.rows, [2, 5]);
+  const divergente = r.warnings.find((w) => w.code === "valores-divergentes");
+  assert.ok(divergente.message.includes("SERVENTE"));
+  assert.ok(/2\.000,00/.test(divergente.message) && /3\.000,00/.test(divergente.message));
+  assert.equal(r.records.find((x) => x.cargo === "SERVENTE").salario, 2000);
+});

@@ -1,7 +1,7 @@
 // Dados 100% fictícios.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { conferirTerceirizados, custoMensal, subtotais } from "../lib/folha/funcionarios.ts";
+import { custoMensal, subtotais } from "../lib/folha/funcionarios.ts";
 
 const p = (origem, empresa, funcao, remuneracao, alimentacao, extra = {}) => ({
   matricula: "x",
@@ -47,24 +47,4 @@ test("subtotais respeitam o filtro aplicado às linhas", () => {
   const s = subtotais(rows.filter((r) => r.origem === "Terceirizado"));
   assert.equal(s.comissionados.quantidade, 0);
   assert.equal(s.total.quantidade, 3);
-});
-
-test("conferência: divergentes e funções sem valor (só contagens e funções)", () => {
-  const tabela = [
-    { cargo: "Vigia", salario: 2000, linha: 2, origem: "Terceirizado" },
-    { cargo: "SERVENTE", salario: null, linha: 3, origem: "Terceirizado" },
-    { cargo: "AS 1", salario: 5, linha: 4, origem: "Comissionado" },
-  ];
-  const c = conferirTerceirizados(rows, tabela);
-  assert.equal(c.terceirizados, 3);
-  assert.equal(c.divergentes, 1, "VIGIA de 2.100 difere de 2.000");
-  assert.equal(c.funcoesSemValor, 1);
-  assert.deepEqual(c.funcoes.map((f) => [f.funcao, f.pessoas, f.divergentes]), [["VIGIA", 2, 1], ["SERVENTE", 1, 0]]);
-  assert.ok(!JSON.stringify(c).includes("Pessoa Fictícia"));
-});
-
-test("conferência: função ausente da tabela conta como sem valor", () => {
-  const c = conferirTerceirizados(rows, []);
-  assert.equal(c.funcoesSemValor, 2);
-  assert.equal(c.divergentes, 0);
 });

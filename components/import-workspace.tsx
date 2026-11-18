@@ -12,7 +12,8 @@ import { useAuth } from "@/components/auth-gate";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { detectKind, importFile, ImportFileError } from "@/lib/import";
-import type { AnyImportResult, AnyStoredDataset, ImportKind } from "@/lib/import";
+import type { AnyImportResult, AnyStoredDataset, CargoSalario, ColaboradorPlanilha, ImportKind } from "@/lib/import";
+import { garantirConciliacao } from "@/lib/folha/conciliacao";
 import { getDataStore, storageMode } from "@/lib/storage";
 
 type AnyResult = AnyImportResult;
@@ -407,13 +408,24 @@ export default function ImportWorkspace() {
       const store = getDataStore();
       const counts: Record<ImportKind, number> = { ecidade: 0, planilha: 0, salarial: 0 };
       const saved: ImportKind[] = [];
+      const novaTabela = slots.salarial.status === "ready" ? (slots.salarial.result.records as CargoSalario[]) : null;
       for (const kind of readyKinds) {
         const slot = slots[kind];
         if (slot.status !== "ready") continue;
-        const stored = { ...slot.result, schemaVersion: 1 as const, importedAt: new Date().toISOString() };
+        let result = slot.result;
+        if (kind === "planilha") {
+          // A conferência com a tabela salarial é feita aqui, na importação (a planilha da empresa prevalece; só se acrescentam campos).
+          const tabela = novaTabela ?? (await store.load("salarial"))?.records ?? null;
+          result = { ...slot.result, records: garantirConciliacao(slot.result.records as ColaboradorPlanilha[], tabela) } as AnyImportResult;
+        }
+        const stored = { ...result, schemaVersion: 1 as const, importedAt: new Date().toISOString() };
         await store.replace(kind, stored as AnyStoredDataset);
         counts[kind] = slot.result.records.length;
         saved.push(kind);
+      }
+      if (novaTabela && !saved.includes("planilha")) {
+        const planilha = await store.load("planilha");
+        if (planilha) await store.replace("planilha", { ...planilha, records: garantirConciliacao(planilha.records, novaTabela) });
       }
       tokens.current = { ecidade: tokens.current.ecidade + 1, planilha: tokens.current.planilha + 1, salarial: tokens.current.salarial + 1 };
       setSlots(EMPTY_SLOTS);

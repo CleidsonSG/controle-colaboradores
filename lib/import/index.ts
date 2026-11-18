@@ -23,6 +23,7 @@ export type {
   ImportWarning,
   Origem,
   ServidorECidade,
+  SituacaoRemuneracao,
   Settings,
   StoredDataset,
 } from "./types.ts";

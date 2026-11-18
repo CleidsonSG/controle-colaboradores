@@ -3,7 +3,7 @@
  * cruza com a tabela salarial e calcula custo e vagas livres a partir do teto da folha.
  * Valores monetários em centavos.
  */
-import { normalizeHeader } from "../import/text.ts";
+import { chaveFuncao } from "../import/tabela-salarial.ts";
 import type { CargoSalario, ServidorECidade } from "../import/types.ts";
 import type { Folha } from "./simulacao.ts";
 
@@ -43,7 +43,7 @@ export type Apuracao = {
 };
 
 export function chaveCargo(nome: string): string {
-  return normalizeHeader(nome);
+  return chaveFuncao(nome);
 }
 
 export function hojeIso(): string {
@@ -67,9 +67,9 @@ export function apurar(
   for (const linha of tabela ?? []) {
     if (linha.origem === "Terceirizado") continue;
     const chave = chaveCargo(linha.cargo);
-    if (!salarios.has(chave)) {
-      salarios.set(chave, { nome: linha.cargo, salario: linha.salario === null ? null : Math.round(linha.salario * 100) });
-    }
+    // Primeiro valor não vazio vence: uma repetição sem valor não anula a função e uma preenchida substitui a vazia.
+    if (salarios.get(chave)?.salario != null) continue;
+    salarios.set(chave, { nome: salarios.get(chave)?.nome ?? linha.cargo, salario: linha.salario === null ? null : Math.round(linha.salario * 100) });
   }
 
   const grupos = new Map<string, { nomes: Map<string, number>; servidores: number }>();

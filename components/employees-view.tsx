@@ -14,8 +14,34 @@ import { cn } from "@/lib/utils";
 import CustoAlimentacao from "@/components/custo-alimentacao";
 import DataTable, { formatMoney, type Column } from "@/components/data-table";
 import { getDataStore, storageMode } from "@/lib/storage";
-import { conferirTerceirizados, custoMensal, subtotais, type Soma } from "@/lib/folha/funcionarios";
-import type { CargoSalario, ColaboradorPlanilha, StoredDataset } from "@/lib/import";
+import { conciliarRemuneracao, divergenciasParaCsv, DIVERGENCIAS_CSV_HEADERS, type Conciliacao } from "@/lib/folha/conciliacao";
+import { custoMensal, subtotais, type Soma } from "@/lib/folha/funcionarios";
+import { buildCsvBlob } from "@/lib/export-data";
+import type { CargoSalario, ColaboradorPlanilha, SituacaoRemuneracao, StoredDataset } from "@/lib/import";
+
+const SITUACAO: Record<SituacaoRemuneracao, { label: string; variant: "success" | "warning" | "secondary" }> = {
+  confere: { label: "Confere", variant: "success" },
+  diverge: { label: "Diverge", variant: "warning" },
+  "sem-valor": { label: "Sem valor na tabela", variant: "secondary" },
+  "fora-da-tabela": { label: "Fora da tabela", variant: "secondary" },
+  "nao-informada": { label: "Não informada", variant: "secondary" },
+};
+
+function SituacaoBadge({ situacao }: { situacao: SituacaoRemuneracao }) {
+  const { label, variant } = SITUACAO[situacao];
+  return (
+    <Badge variant={variant}>
+      {situacao === "diverge" && <TriangleAlert aria-hidden="true" />}
+      {label}
+    </Badge>
+  );
+}
+
+/** informado - tabela (reais), calculado em centavos; null quando falta um dos dois valores. */
+function diferencaDaLinha(row: ColaboradorPlanilha): number | null {
+  if (row.remuneracao === null || row.remuneracaoTabela === null || row.remuneracaoTabela === undefined) return null;
+  return (Math.round(row.remuneracao * 100) - Math.round(row.remuneracaoTabela * 100)) / 100;
+}
 
 export const PLANILHA_COLUMNS: Column<ColaboradorPlanilha>[] = [
   {
@@ -38,7 +64,15 @@ export const PLANILHA_COLUMNS: Column<ColaboradorPlanilha>[] = [
   { key: "empresa", header: "Empresa/Secretaria", value: (row) => row.empresaSecretaria },
   { key: "lotacao", header: "Lotação", value: (row) => row.lotacao },
   { key: "funcao", header: "Função", value: (row) => row.funcao },
-  { key: "remuneracao", header: "Remuneração (R$)", kind: "money", value: (row) => row.remuneracao },
+  { key: "remuneracao", header: "Remuneração informada (R$)", kind: "money", value: (row) => row.remuneracao },
+  { key: "remuneracaoTabela", header: "Remuneração (tabela) (R$)", kind: "money", value: (row) => row.remuneracaoTabela ?? null },
+  { key: "diferenca", header: "Diferença (R$)", kind: "money", value: (row) => diferencaDaLinha(row) },
+  {
+    key: "situacao",
+    header: "Situação",
+    value: (row) => (row.situacaoRemuneracao ? SITUACAO[row.situacaoRemuneracao].label : ""),
+    render: (row) => (row.situacaoRemuneracao ? <SituacaoBadge situacao={row.situacaoRemuneracao} /> : <span className="text-muted-foreground">—</span>),
+  },
   { key: "alimentacao", header: "Alimentação (R$)", kind: "money", value: (row) => row.alimentacao },
   { key: "custo", header: "Custo mensal (R$)", kind: "money", value: (row) => custoMensal(row) },
   { key: "origem", header: "Origem", value: (row) => row.origem },
@@ -155,16 +189,22 @@ function PlanilhaPanel({ dataset }: { dataset: StoredDataset<ColaboradorPlanilha
   const [empresa, setEmpresa] = useState("");
   const [funcao, setFuncao] = useState("");
   const [origem, setOrigem] = useState("");
+  const [situacao, setSituacao] = useState("");
 
+  const situacoes = useMemo(
+    () => unique(dataset.records.flatMap((row) => (row.situacaoRemuneracao ? [SITUACAO[row.situacaoRemuneracao].label] : []))),
+    [dataset],
+  );
   const empresas = useMemo(() => unique(dataset.records.map((row) => row.empresaSecretaria)), [dataset]);
   const funcoes = useMemo(() => unique(dataset.records.map((row) => row.funcao)), [dataset]);
   const origens = useMemo(() => unique(dataset.records.map((row) => row.origem)), [dataset]);
   const rows = useMemo(
     () =>
       dataset.records.filter(
-        (row) => (!empresa || row.empresaSecretaria === empresa) && (!funcao || row.funcao === funcao) && (!origem || row.origem === origem),
+        (row) => (!empresa || row.empresaSecretaria === empresa) && (!funcao || row.funcao === funcao) && (!origem || row.origem === origem) &&
+        (!situacao || (row.situacaoRemuneracao !== undefined && SITUACAO[row.situacaoRemuneracao].label === situacao)),
       ),
-    [dataset, empresa, funcao, origem],
+    [dataset, empresa, funcao, origem, situacao],
   );
 
   return (
@@ -174,6 +214,7 @@ function PlanilhaPanel({ dataset }: { dataset: StoredDataset<ColaboradorPlanilha
         <FilterSelect label="Empresa/Secretaria" value={empresa} options={empresas} onChange={setEmpresa} />
         <FilterSelect label="Função" value={funcao} options={funcoes} onChange={setFuncao} />
         <FilterSelect label="Origem" value={origem} options={origens} onChange={setOrigem} />
+        {situacoes.length > 0 && <FilterSelect label="Situação" value={situacao} options={situacoes} onChange={setSituacao} />}
       </FilterBar>
       <DataTable
         caption="Funcionários: comissionados e terceirizados"
@@ -214,29 +255,50 @@ function KpiLoading() {
   );
 }
 
-function KpiStrip({ planilha }: { planilha: StoredDataset<ColaboradorPlanilha> | null }) {
+function KpiStrip({ planilha, conciliacao }: { planilha: StoredDataset<ColaboradorPlanilha> | null; conciliacao: Conciliacao | null }) {
   const dash = "—";
   const totais = planilha ? subtotais(planilha.records) : null;
+  const divergentes = conciliacao?.resumo.porSituacao.diverge ?? 0;
   return (
-    <dl className={KPI_GRID} aria-label="Indicadores do cadastro funcional">
+    <dl className={cn(KPI_GRID, conciliacao && "lg:grid-cols-5")} aria-label="Indicadores do cadastro funcional">
       <Kpi label="Comissionados" value={totais ? formatInt(totais.comissionados.quantidade) : dash} />
       <Kpi label="Terceirizados" value={totais ? formatInt(totais.terceirizados.quantidade) : dash} />
-      <Kpi wide money label="Soma de remuneração" value={totais ? reais(totais.total.remuneracao) : dash} />
-      <Kpi wide money label="Custo mensal total" value={totais ? reais(totais.total.custo) : dash} note={totais ? "Remuneração + alimentação" : undefined} />
+      <Kpi wide money label="Soma de remuneração" value={totais ? reais(totais.total.remuneracao) : dash} note={totais ? "Valor informado pela empresa" : undefined} />
+      <Kpi wide money label="Custo mensal total" value={totais ? reais(totais.total.custo) : dash} note={totais ? "Remuneração informada + alimentação" : undefined} />
+      {conciliacao && (
+        <Kpi
+          wide
+          money
+          label="Diferença informado x tabela"
+          value={reais(conciliacao.resumo.diferencaTotal)}
+          note={`${divergentes === 0 ? "Nenhuma pessoa" : `${formatInt(divergentes)} ${divergentes === 1 ? "pessoa" : "pessoas"}`} com valor diferente. Não altera o custo.`}
+        />
+      )}
     </dl>
   );
 }
 
-/** Remuneração dos terceirizados x aba Terceirizado da tabela salarial. Só contagens e funções; nunca nomes de pessoas. */
-function ConferenciaTerceirizados({ planilha, salarial }: { planilha: StoredDataset<ColaboradorPlanilha>; salarial: StoredDataset<CargoSalario> | null }) {
-  const conferencia = useMemo(() => (salarial ? conferirTerceirizados(planilha.records, salarial.records) : null), [planilha, salarial]);
-  if (!conferencia) {
+function baixarDivergencias(conciliacao: Conciliacao) {
+  const blob = buildCsvBlob(DIVERGENCIAS_CSV_HEADERS, divergenciasParaCsv(conciliacao.grupos));
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "divergencias-remuneracao.csv";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+/** Remuneração informada (comissionados e terceirizados) x tabela salarial da Prefeitura. Só agregados; nunca nomes, matrículas ou CPF. */
+function ConferenciaRemuneracao({ conciliacao }: { conciliacao: Conciliacao | null }) {
+  if (!conciliacao) {
     return (
       <Alert variant="info">
         <FileSpreadsheet aria-hidden="true" />
-        <AlertTitle>Conferência com a tabela salarial</AlertTitle>
+        <AlertTitle>Conferência de remuneração</AlertTitle>
         <AlertDescription>
-          <p>Importe a tabela salarial (aba Terceirizado) para conferir a remuneração dos terceirizados.</p>
+          <p>Importe a tabela salarial para conferir a remuneração informada pelas empresas.</p>
           <div className="pt-1">
             <Button asChild size="sm" variant="outline">
               <Link href="/import">Importar tabela salarial</Link>
@@ -246,51 +308,54 @@ function ConferenciaTerceirizados({ planilha, salarial }: { planilha: StoredData
       </Alert>
     );
   }
-  if (conferencia.terceirizados === 0) return null;
-  const detalhe = conferencia.funcoes.filter((item) => item.divergentes > 0 || item.valorTabela === null);
+  if (conciliacao.resumo.pessoas === 0) return null;
+  const { porSituacao } = conciliacao.resumo;
+  const detalhe = conciliacao.grupos.filter((grupo) => grupo.situacao === "diverge" || grupo.situacao === "sem-valor" || grupo.situacao === "fora-da-tabela");
   return (
     <Card className="gap-4">
       <CardHeader>
-        <CardTitle>Conferência com a tabela salarial</CardTitle>
+        <CardTitle>Conferência de remuneração</CardTitle>
         <CardDescription>
-          Remuneração dos terceirizados comparada à aba Terceirizado da tabela. Esta conferência não entra no teto dos comissionados.
+          A planilha da empresa prevalece: o custo usa a remuneração informada. A tabela salarial da Prefeitura é só referência de conferência.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <dl className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-3 [&>*]:bg-card">
-          <Kpi label="Terceirizados conferidos" value={formatInt(conferencia.terceirizados)} />
-          <Kpi label="Com remuneração diferente da tabela" value={formatInt(conferencia.divergentes)} />
-          <Kpi label="Funções sem valor na tabela" value={formatInt(conferencia.funcoesSemValor)} />
+        <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border lg:grid-cols-4 [&>*]:bg-card">
+          <Kpi label="Conferem com a tabela" value={formatInt(porSituacao.confere)} />
+          <Kpi label="Divergem da tabela" value={formatInt(porSituacao.diverge)} />
+          <Kpi label="Sem valor ou fora da tabela" value={formatInt(porSituacao["sem-valor"] + porSituacao["fora-da-tabela"])} />
+          <Kpi label="Remuneração não informada" value={formatInt(porSituacao["nao-informada"])} />
         </dl>
         {detalhe.length > 0 ? (
-          <div className="max-h-80 overflow-auto rounded-lg border" tabIndex={0} role="region" aria-label="Funções com diferença ou sem valor na tabela">
+          <div className="max-h-96 overflow-auto rounded-lg border" tabIndex={0} role="region" aria-label="Funções com diferença ou sem valor na tabela">
             <Table>
-              <caption className="sr-only">Funções de terceirizados com diferença ou sem valor na tabela salarial</caption>
+              <caption className="sr-only">Comissionados e terceirizados por empresa e função com diferença ou sem valor na tabela salarial</caption>
               <TableHeader className="sticky top-0 bg-muted/95">
                 <TableRow className="hover:bg-transparent">
+                  <TableHead scope="col">Empresa</TableHead>
+                  <TableHead scope="col">Origem</TableHead>
                   <TableHead scope="col">Função</TableHead>
                   <TableHead scope="col" className="text-right">Pessoas</TableHead>
-                  <TableHead scope="col" className="text-right">Valor na tabela</TableHead>
+                  <TableHead scope="col" className="text-right">Valor tabela</TableHead>
+                  <TableHead scope="col" className="text-right">Valor informado</TableHead>
+                  <TableHead scope="col" className="text-right">Diferença unitária</TableHead>
+                  <TableHead scope="col" className="text-right">Diferença mensal</TableHead>
                   <TableHead scope="col">Situação</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {detalhe.map((item) => (
-                  <TableRow key={item.funcao}>
-                    <TableCell>{item.funcao}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatInt(item.pessoas)}</TableCell>
-                    <TableCell className="text-right whitespace-nowrap tabular-nums">{item.valorTabela === null ? "—" : reais(item.valorTabela)}</TableCell>
+                {detalhe.map((grupo) => (
+                  <TableRow key={`${grupo.origem}|${grupo.empresa}|${grupo.funcao}|${grupo.valorInformado}`}>
+                    <TableCell>{grupo.empresa}</TableCell>
+                    <TableCell>{grupo.origem}</TableCell>
+                    <TableCell>{grupo.funcao}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatInt(grupo.pessoas)}</TableCell>
+                    <TableCell className="text-right whitespace-nowrap tabular-nums">{grupo.valorTabela === null ? "—" : reais(grupo.valorTabela)}</TableCell>
+                    <TableCell className="text-right whitespace-nowrap tabular-nums">{grupo.valorInformado === null ? "—" : reais(grupo.valorInformado)}</TableCell>
+                    <TableCell className="text-right whitespace-nowrap tabular-nums">{grupo.diferencaUnitaria === null ? "—" : reais(grupo.diferencaUnitaria)}</TableCell>
+                    <TableCell className="text-right whitespace-nowrap tabular-nums">{grupo.diferencaMensal === null ? "—" : reais(grupo.diferencaMensal)}</TableCell>
                     <TableCell>
-                      {item.valorTabela === null ? (
-                        <Badge variant="warning">
-                          <TriangleAlert aria-hidden="true" />
-                          Sem valor na tabela
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary">
-                          {formatInt(item.divergentes)} {item.divergentes === 1 ? "pessoa diferente" : "pessoas diferentes"}
-                        </Badge>
-                      )}
+                      <SituacaoBadge situacao={grupo.situacao} />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -298,7 +363,14 @@ function ConferenciaTerceirizados({ planilha, salarial }: { planilha: StoredData
             </Table>
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">Todas as remunerações conferem com a tabela.</p>
+          <p className="text-sm text-muted-foreground">Todas as remunerações informadas conferem com a tabela.</p>
+        )}
+        {porSituacao.diverge > 0 && (
+          <div>
+            <Button type="button" variant="outline" onClick={() => baixarDivergencias(conciliacao)}>
+              Exportar divergências (CSV)
+            </Button>
+          </div>
         )}
       </CardContent>
     </Card>
@@ -312,6 +384,14 @@ type LoadState =
 
 export default function EmployeesView() {
   const [state, setState] = useState<LoadState>({ status: "loading" });
+
+  // Reconcilia na leitura (idempotente): cobre dados salvos antes da conciliação e tabela importada depois.
+  const conciliado = useMemo(() => {
+    if (state.status !== "ready" || !state.planilha) return null;
+    if (!state.salarial) return { planilha: state.planilha, conciliacao: null };
+    const conciliacao = conciliarRemuneracao(state.planilha.records, state.salarial.records);
+    return { planilha: { ...state.planilha, records: conciliacao.rows }, conciliacao };
+  }, [state]);
 
   useEffect(() => {
     let active = true;
@@ -347,7 +427,7 @@ export default function EmployeesView() {
         </Alert>
       );
     }
-    if (!state.planilha) {
+    if (!conciliado) {
       return (
         <div className="flex flex-col items-center gap-4 rounded-lg border border-dashed bg-card px-6 py-14 text-center">
           <span className="grid size-12 place-items-center rounded-full bg-secondary text-secondary-foreground">
@@ -365,8 +445,8 @@ export default function EmployeesView() {
     }
     return (
       <>
-        <ConferenciaTerceirizados planilha={state.planilha} salarial={state.salarial} />
-        <PlanilhaPanel dataset={state.planilha} />
+        <ConferenciaRemuneracao conciliacao={conciliado.conciliacao} />
+        <PlanilhaPanel dataset={conciliado.planilha} />
       </>
     );
   }
@@ -380,9 +460,9 @@ export default function EmployeesView() {
         </p>
       </header>
 
-      {state.status === "loading" ? <KpiLoading /> : state.status === "ready" ? <KpiStrip planilha={state.planilha} /> : null}
+      {state.status === "loading" ? <KpiLoading /> : state.status === "ready" ? <KpiStrip planilha={conciliado?.planilha ?? null} conciliacao={conciliado?.conciliacao ?? null} /> : null}
 
-      {state.status === "ready" && state.planilha && <CustoAlimentacao rows={state.planilha.records} />}
+      {conciliado && <CustoAlimentacao rows={conciliado.planilha.records} />}
 
       <div className="flex flex-col gap-6">{body()}</div>
     </div>
