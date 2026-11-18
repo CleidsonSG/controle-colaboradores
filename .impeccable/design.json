@@ -1,0 +1,502 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-18T15:04:23Z",
+  "title": "Design System: Controle de Colaboradores",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Azul-Petróleo Institucional",
+        "canonical": "#0b5c74",
+        "tonalRamp": [
+          "#031c23",
+          "#062e3a",
+          "#084051",
+          "#0a5166",
+          "#3c7d90",
+          "#79a5b3",
+          "#b6ced5",
+          "#e2ebee"
+        ],
+        "dark": "#55b7cf"
+      },
+      "secondary": {
+        "role": "secondary",
+        "displayName": "Névoa Petróleo",
+        "canonical": "#e4eef1",
+        "tonalRamp": [
+          "#444748",
+          "#727778",
+          "#a0a7a9",
+          "#c9d1d4",
+          "#e9f1f4",
+          "#f0f6f7",
+          "#f7fafb",
+          "#fcfdfd"
+        ],
+        "dark": "#1a2c35"
+      },
+      "secondary-foreground": {
+        "role": "secondary",
+        "displayName": "Petróleo Profundo",
+        "canonical": "#0b4a5d",
+        "tonalRamp": [
+          "#03161c",
+          "#06252e",
+          "#083441",
+          "#0a4152",
+          "#3c6e7d",
+          "#799ba6",
+          "#b6c9ce",
+          "#e2e9ec"
+        ],
+        "dark": "#b9dbe4"
+      },
+      "background": {
+        "role": "neutral",
+        "displayName": "Papel Frio",
+        "canonical": "#f4f6f8",
+        "tonalRamp": [
+          "#494a4a",
+          "#7a7b7c",
+          "#abacae",
+          "#d7d8da",
+          "#f6f8f9",
+          "#f9fafb",
+          "#fcfcfd",
+          "#fefefe"
+        ],
+        "dark": "#0d151b"
+      },
+      "foreground": {
+        "role": "neutral",
+        "displayName": "Tinta Azulada",
+        "canonical": "#15202b",
+        "tonalRamp": [
+          "#060a0d",
+          "#0a1016",
+          "#0f161e",
+          "#121c26",
+          "#444d55",
+          "#7e848a",
+          "#b9bcbf",
+          "#e3e4e6"
+        ],
+        "dark": "#e3eaef"
+      },
+      "card": {
+        "role": "neutral",
+        "displayName": "Branco Cartão",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#4d4d4d",
+          "#808080",
+          "#b2b2b2",
+          "#e0e0e0",
+          "#ffffff",
+          "#ffffff",
+          "#ffffff",
+          "#ffffff"
+        ],
+        "dark": "#131e26"
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Cinza Névoa",
+        "canonical": "#edf1f4",
+        "tonalRamp": [
+          "#474849",
+          "#76787a",
+          "#a6a9ab",
+          "#d1d4d7",
+          "#f1f4f6",
+          "#f5f7f9",
+          "#fafbfc",
+          "#fdfdfe"
+        ],
+        "dark": "#1a2630"
+      },
+      "muted-foreground": {
+        "role": "neutral",
+        "displayName": "Cinza de Apoio",
+        "canonical": "#556373",
+        "tonalRamp": [
+          "#1a1e23",
+          "#2a323a",
+          "#3b4550",
+          "#4b5765",
+          "#77828f",
+          "#a2a9b2",
+          "#ccd0d5",
+          "#ebecee"
+        ],
+        "dark": "#9bacb9"
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Linha Fina",
+        "canonical": "#d9e0e7",
+        "tonalRamp": [
+          "#414345",
+          "#6c7074",
+          "#989da2",
+          "#bfc5cb",
+          "#e1e6ec",
+          "#eaeef2",
+          "#f4f6f8",
+          "#fafbfc"
+        ],
+        "dark": "#25333e"
+      },
+      "input": {
+        "role": "neutral",
+        "displayName": "Contorno de Campo",
+        "canonical": "#b9c4cf",
+        "tonalRamp": [
+          "#383b3e",
+          "#5c6268",
+          "#828991",
+          "#a3acb6",
+          "#c7d0d9",
+          "#d8dfe5",
+          "#eaedf1",
+          "#f7f8f9"
+        ],
+        "dark": "#3a4a57"
+      },
+      "success": {
+        "role": "state",
+        "displayName": "Verde Regular",
+        "canonical": "#1c7547",
+        "tonalRamp": [
+          "#082315",
+          "#0e3a24",
+          "#145232",
+          "#19673e",
+          "#49916c",
+          "#82b39a",
+          "#bbd6c8",
+          "#e4eee9"
+        ],
+        "dark": "#4fc48c"
+      },
+      "warning": {
+        "role": "state",
+        "displayName": "Âmbar Atenção",
+        "canonical": "#965800",
+        "tonalRamp": [
+          "#2d1a00",
+          "#4b2c00",
+          "#693e00",
+          "#844d00",
+          "#ab7933",
+          "#c5a373",
+          "#e0cdb2",
+          "#f2ebe0"
+        ],
+        "dark": "#efb459"
+      },
+      "destructive": {
+        "role": "state",
+        "displayName": "Vermelho Folha",
+        "canonical": "#b42318",
+        "tonalRamp": [
+          "#360b07",
+          "#5a120c",
+          "#7e1811",
+          "#9e1f15",
+          "#c34f46",
+          "#d68680",
+          "#e8bdba",
+          "#f6e5e3"
+        ],
+        "dark": "#f2786b"
+      },
+      "sidebar": {
+        "role": "neutral",
+        "displayName": "Ardósia Noturna",
+        "canonical": "#0e2a33",
+        "tonalRamp": [
+          "#040d0f",
+          "#07151a",
+          "#0a1d24",
+          "#0c252d",
+          "#3e555c",
+          "#7a8a8f",
+          "#b7bfc2",
+          "#e2e5e7"
+        ],
+        "dark": "#091216"
+      },
+      "sidebar-foreground": {
+        "role": "neutral",
+        "displayName": "Texto de Ardósia",
+        "canonical": "#d3e2e7",
+        "tonalRamp": [
+          "#3f4445",
+          "#6a7174",
+          "#949ea2",
+          "#bac7cb",
+          "#dce8ec",
+          "#e7eff2",
+          "#f2f6f8",
+          "#fafcfc"
+        ],
+        "dark": "#c9d8de"
+      },
+      "sidebar-muted": {
+        "role": "neutral",
+        "displayName": "Apoio de Ardósia",
+        "canonical": "#93afb8",
+        "tonalRamp": [
+          "#2c3537",
+          "#4a585c",
+          "#677a81",
+          "#819aa2",
+          "#a9bfc6",
+          "#c4d3d8",
+          "#dfe7ea",
+          "#f2f5f6"
+        ],
+        "dark": "#8aa1aa"
+      },
+      "sidebar-accent": {
+        "role": "neutral",
+        "displayName": "Item Ativo de Ardósia",
+        "canonical": "#17414e",
+        "tonalRamp": [
+          "#071417",
+          "#0c2027",
+          "#102e37",
+          "#143945",
+          "#456771",
+          "#7f969e",
+          "#b9c6ca",
+          "#e3e8ea"
+        ],
+        "dark": "#13303a"
+      },
+      "sidebar-border": {
+        "role": "neutral",
+        "displayName": "Linha de Ardósia",
+        "canonical": "#1d4552",
+        "tonalRamp": [
+          "#091519",
+          "#0e2229",
+          "#143039",
+          "#1a3d48",
+          "#4a6a75",
+          "#8399a0",
+          "#bbc7cb",
+          "#e4e9ea"
+        ],
+        "dark": "#173540"
+      },
+      "sidebar-ring": {
+        "role": "primary",
+        "displayName": "Brilho Turquesa",
+        "canonical": "#6cc8db",
+        "tonalRamp": [
+          "#203c42",
+          "#36646e",
+          "#4c8c99",
+          "#5fb0c1",
+          "#89d3e2",
+          "#aee1eb",
+          "#d3eef4",
+          "#edf8fb"
+        ],
+        "dark": "#6cc8db"
+      }
+    },
+    "typographyMeta": {
+      "title-page": {
+        "displayName": "Título de página",
+        "purpose": "Nome da tela no conteúdo."
+      },
+      "indicator-figure": {
+        "displayName": "Número de cartão",
+        "purpose": "Total grande no cartão de cargo, tabular."
+      },
+      "indicator-strip": {
+        "displayName": "Indicador da faixa",
+        "purpose": "Valores da faixa de indicadores, tabular."
+      },
+      "title-card": {
+        "displayName": "Título de cartão",
+        "purpose": "Nome do cargo ou da seção; até 2 linhas."
+      },
+      "body": {
+        "displayName": "Corpo",
+        "purpose": "Texto geral, células, legendas em cinza."
+      },
+      "label": {
+        "displayName": "Rótulo",
+        "purpose": "Botões, campos, abas, menu."
+      },
+      "caption": {
+        "displayName": "Legenda",
+        "purpose": "Selos e notas curtas."
+      }
+    },
+    "shadows": [
+      {
+        "name": "shadow-xs",
+        "value": "0 1px 2px 0 rgb(0 0 0 / 0.05)",
+        "purpose": "Única sombra do sistema: cartões, campos, botões primário e contorno, opção marcada do seletor de tema."
+      }
+    ],
+    "motion": [
+      {
+        "name": "transition-colors",
+        "value": "color/background/border 150ms cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "Hover e estados de botões, abas, itens de menu."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "animation/transition 0.01ms",
+        "purpose": "Com prefers-reduced-motion: reduce, todo movimento é anulado."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      },
+      {
+        "name": "xl",
+        "value": "1280px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Botão primário",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Ação principal da tela; Azul-Petróleo com sombra mínima.",
+      "html": "<button class=\"ds-btn-primary\">Salvar</button>",
+      "css": ".ds-btn-primary { font-family: var(--font-sans, 'Public Sans', ui-sans-serif, system-ui, sans-serif); display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 16px; border-radius: calc(var(--radius) - 2px); font-size: 14px; font-weight: 500; cursor: pointer; transition: background-color .15s; background: var(--primary); color: var(--primary-foreground); border: 0; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); } .ds-btn-primary:hover { background: color-mix(in srgb, var(--primary) 90%, transparent); } .ds-btn-primary:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }"
+    },
+    {
+      "name": "Botão de contorno",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Ação secundária com borda de campo sobre fundo de cartão.",
+      "html": "<button class=\"ds-btn-outline\">Cancelar</button>",
+      "css": ".ds-btn-outline { font-family: var(--font-sans, 'Public Sans', ui-sans-serif, system-ui, sans-serif); display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 16px; border-radius: calc(var(--radius) - 2px); font-size: 14px; font-weight: 500; cursor: pointer; transition: background-color .15s; background: var(--card); color: var(--foreground); border: 1px solid var(--input); box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); } .ds-btn-outline:hover { background: var(--accent); color: var(--accent-foreground); } .ds-btn-outline:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }"
+    },
+    {
+      "name": "Campo de texto",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Campo de 40px com rótulo visível acima e foco por borda e contorno suave.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">E-mail</span><input class=\"ds-input\" type=\"email\" placeholder=\"nome@orgao.gov.br\"></label>",
+      "css": ".ds-field { font-family: var(--font-sans, 'Public Sans', ui-sans-serif, system-ui, sans-serif); display: flex; flex-direction: column; gap: 6px; max-width: 320px; } .ds-field-label { font-size: 14px; font-weight: 500; color: var(--foreground); } .ds-input { font-family: var(--font-sans, 'Public Sans', ui-sans-serif, system-ui, sans-serif); height: 40px; width: 100%; box-sizing: border-box; padding: 8px 12px; border: 1px solid var(--input); border-radius: calc(var(--radius) - 2px); background: var(--card); color: var(--foreground); font-size: 14px; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); transition: border-color .15s; } .ds-input::placeholder { color: var(--muted-foreground); } .ds-input:focus-visible { border-color: var(--ring); outline: 2px solid color-mix(in srgb, var(--ring) 40%, transparent); outline-offset: 0; }"
+    },
+    {
+      "name": "Selo de estado",
+      "kind": "chip",
+      "refersTo": "badge-secondary",
+      "description": "Pílula com estado sempre em texto: atenção (âmbar) e neutro.",
+      "html": "<span class=\"ds-badge ds-badge-warning\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3\"/><path d=\"M12 9v4\"/><path d=\"M12 17h.01\"/></svg>Fora da tabela</span> <span class=\"ds-badge ds-badge-secondary\">Sem servidores</span>",
+      "css": ".ds-badge { font-family: var(--font-sans, 'Public Sans', ui-sans-serif, system-ui, sans-serif); display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 9999px; font-size: 12px; font-weight: 500; white-space: nowrap; border: 1px solid transparent; } .ds-badge-warning { color: var(--warning); background: color-mix(in srgb, var(--warning) 10%, transparent); border-color: color-mix(in srgb, var(--warning) 30%, transparent); } .ds-badge-secondary { color: var(--secondary-foreground); background: var(--secondary); }"
+    },
+    {
+      "name": "Cartão de cargo",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Cartão de função: título, selo, número grande tabular, salário/custo e barra de progresso.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-head\"><div class=\"ds-card-title\">Assessor Técnico</div><span class=\"ds-card-badge\">Sem servidores</span></div><p class=\"ds-card-fig\"><span class=\"ds-card-num\">18</span><span class=\"ds-card-sub\">servidores comissionados (vagas ocupadas)</span></p><dl class=\"ds-card-dl\"><div><dt>Salário</dt><dd>R$ 4.500,00</dd></div><div><dt>Custo mensal</dt><dd>R$ 81.000,00</dd></div></dl><div class=\"ds-progress\" role=\"progressbar\" aria-valuenow=\"75\" aria-label=\"75% do teto da folha\"><div class=\"ds-progress-bar\"></div></div></div>",
+      "css": ".ds-card { font-family: var(--font-sans, 'Public Sans', ui-sans-serif, system-ui, sans-serif); display: flex; flex-direction: column; gap: 16px; max-width: 340px; padding: 20px; background: var(--card); color: var(--card-foreground); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); } .ds-card-head { display: flex; justify-content: space-between; gap: 8px; align-items: start; } .ds-card-title { font-size: 16px; font-weight: 600; line-height: 1.375; } .ds-card-badge { padding: 2px 10px; border-radius: 9999px; font-size: 12px; font-weight: 500; background: var(--secondary); color: var(--secondary-foreground); white-space: nowrap; } .ds-card-fig { margin: 0; display: flex; align-items: baseline; gap: 8px; } .ds-card-num { font-size: 30px; font-weight: 600; letter-spacing: -0.025em; font-variant-numeric: tabular-nums; } .ds-card-sub { font-size: 14px; color: var(--muted-foreground); } .ds-card-dl { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 14px; } .ds-card-dl dt { color: var(--muted-foreground); } .ds-card-dl dd { margin: 2px 0 0; font-weight: 500; font-variant-numeric: tabular-nums; } .ds-progress { height: 8px; border-radius: 9999px; background: var(--muted); overflow: hidden; } .ds-progress-bar { height: 100%; width: 75%; background: var(--primary); }"
+    },
+    {
+      "name": "Faixa de indicadores",
+      "kind": "custom",
+      "refersTo": "card",
+      "description": "Grade única com divisórias finas, rótulo cinza, valor 24px tabular e nota.",
+      "html": "<dl class=\"ds-strip\"><div><dt>Servidores ativos</dt><dd><span>142</span></dd></div><div><dt>Custo da folha</dt><dd><span>R$ 612.400</span></dd></div><div><dt>Saldo do teto</dt><dd><span class=\"ds-neg\">-R$ 8.200</span><small>Acima do teto</small></dd></div></dl>",
+      "css": ".ds-strip { font-family: var(--font-sans, 'Public Sans', ui-sans-serif, system-ui, sans-serif); margin: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--border); } .ds-strip > div { display: flex; flex-direction: column; gap: 4px; padding: 20px 24px; background: var(--card); color: var(--card-foreground); } .ds-strip dt { font-size: 14px; color: var(--muted-foreground); } .ds-strip dd { margin: 0; display: flex; flex-direction: column; gap: 4px; } .ds-strip span { font-size: 24px; font-weight: 600; letter-spacing: -0.025em; font-variant-numeric: tabular-nums; } .ds-strip .ds-neg { color: var(--destructive); } .ds-strip small { font-size: 14px; color: var(--muted-foreground); }"
+    },
+    {
+      "name": "Item de menu lateral",
+      "kind": "nav",
+      "refersTo": "nav-item-active",
+      "description": "Menu Ardósia Noturna; item ativo com fundo de ardósia, ícone turquesa e barra de 3px.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Navegação principal\"><a class=\"ds-nav-item ds-nav-active\" href=\"#\" aria-current=\"page\">Painel de cargos</a><a class=\"ds-nav-item\" href=\"#\">Funcionários</a><a class=\"ds-nav-item\" href=\"#\">Importar</a></nav>",
+      "css": ".ds-nav { font-family: var(--font-sans, 'Public Sans', ui-sans-serif, system-ui, sans-serif); display: flex; flex-direction: column; gap: 2px; width: 240px; padding: 12px; background: var(--sidebar); border-radius: var(--radius); } .ds-nav-item { position: relative; display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: calc(var(--radius) - 2px); font-size: 14px; color: color-mix(in srgb, var(--sidebar-foreground) 85%, transparent); text-decoration: none; transition: background-color .15s, color .15s; } .ds-nav-item:hover { background: color-mix(in srgb, var(--sidebar-accent) 60%, transparent); color: #fff; } .ds-nav-item:focus-visible { outline: 2px solid var(--sidebar-ring); outline-offset: 2px; } .ds-nav-active { background: var(--sidebar-accent); color: #fff; font-weight: 500; } .ds-nav-active::before { content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 9999px; background: var(--sidebar-ring); }"
+    },
+    {
+      "name": "Abas",
+      "kind": "nav",
+      "refersTo": "tab-trigger",
+      "description": "Abas por sublinhado de 2px, sem fundo; ativa em azul-petróleo.",
+      "html": "<div class=\"ds-tabs\" role=\"tablist\"><button class=\"ds-tab ds-tab-active\" role=\"tab\" aria-selected=\"true\">Comissionados</button><button class=\"ds-tab\" role=\"tab\" aria-selected=\"false\">Terceirizados</button></div>",
+      "css": ".ds-tabs { font-family: var(--font-sans, 'Public Sans', ui-sans-serif, system-ui, sans-serif); display: flex; gap: 24px; border-bottom: 1px solid var(--border); } .ds-tab { margin-bottom: -1px; min-height: 44px; padding: 0 2px; background: none; border: 0; border-bottom: 2px solid transparent; font: inherit; font-size: 14px; font-weight: 500; color: var(--muted-foreground); cursor: pointer; transition: color .15s; } .ds-tab:hover { color: var(--foreground); } .ds-tab:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; } .ds-tab-active { color: var(--foreground); border-bottom-color: var(--primary); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Repartição Bem Cuidada",
+    "overview": "Uma repartição pública bem cuidada: sóbria, confiável, em ordem. O sistema trata gente e folha de pagamento, então a interface fala baixo e deixa o dado falar alto. Papel frio ao fundo, azul-petróleo como única voz de marca, um menu lateral escuro de ardósia que ancora a navegação. Nenhum enfeite.\n\nA densidade é média e regular. Números grandes em algarismos tabulares, rótulos pequenos em cinza, linhas finas separando regiões. Componentes discretos e precisos: bordas de 1px, sombra mínima, raio suave de 10px. A informação aparece e a moldura some.",
+    "keyCharacteristics": [
+      "Institucional de setor público; ordem e clareza acima de personalidade.",
+      "Uma única cor de marca (azul-petróleo) e semânticas reservadas a estado.",
+      "Bordas finas e sombra mínima; superfícies planas em camadas tonais.",
+      "Public Sans, com algarismos tabulares nos dados.",
+      "Estado sempre dito em texto (e ícone), nunca só em cor.",
+      "Claro e escuro com paridade total de tokens."
+    ],
+    "rules": [
+      {
+        "name": "A Regra do Estado em Texto",
+        "body": "Cor nunca é o único portador de estado. Todo selo, valor negativo ou aviso traz palavra (e, quando cabe, ícone). Cor reforça, o texto informa.",
+        "section": "colors"
+      },
+      {
+        "name": "A Regra do Selo de Lotação",
+        "body": "Cargo lotado é situação normal, não erro. success para folga confortável, warning para próximo do limite, secondary (neutro, barra azul) para cargo cheio, destructive somente para folha acima do teto.",
+        "section": "colors"
+      },
+      {
+        "name": "A Regra da Voz Única",
+        "body": "O azul-petróleo é a única cor de marca. Verde, âmbar e vermelho existem só para estado e nunca decoram.",
+        "section": "colors"
+      },
+      {
+        "name": "A Regra do Algarismo Tabular",
+        "body": "Todo número que se compara com outro usa tabular-nums, para que colunas e faixas alinhem.",
+        "section": "typography"
+      },
+      {
+        "name": "A Regra da Moldura que Some",
+        "body": "Se a informação se sustenta sem moldura, tire a moldura. Prefira divisória fina a cartão dentro de cartão; sombra nunca sobe além de shadow-xs.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do usar apenas tokens (bg-primary, text-muted-foreground, border-border), nunca hexadecimais soltos nos componentes.",
+      "Do dizer o estado em texto, com ícone de apoio quando couber (A Regra do Estado em Texto).",
+      "Do usar tabular-nums em todo número comparável.",
+      "Do manter bordas de 1px, raio de 10px nos cartões e 8px nos campos e botões, e sombra no máximo shadow-xs.",
+      "Do manter o contorno de foco de 2px em ring visível em tudo que recebe foco, e honrar prefers-reduced-motion.",
+      "Do manter paridade claro/escuro: todo papel de cor tem valor nos dois temas.",
+      "Do usar dados fictícios em capturas e protótipos: os dados de servidores são pessoais."
+    ],
+    "donts": [
+      "Don't usar vermelho para cargo lotado; lotação cheia é normal (A Regra do Selo de Lotação).",
+      "Don't usar cor como único indicador de estado.",
+      "Don't introduzir uma segunda cor de marca nem usar verde, âmbar ou vermelho como decoração.",
+      "Don't colocar cartão dentro de cartão nem moldura em volta do que a divisória fina já resolve.",
+      "Don't usar sombras fortes, gradientes, ilustrações ou qualquer enfeite sem função informativa.",
+      "Don't escrever CSS à mão nem criar classes próprias; o sistema é Tailwind + componentes de components/ui/."
+    ]
+  }
+}

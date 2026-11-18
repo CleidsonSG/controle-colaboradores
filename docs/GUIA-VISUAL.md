@@ -1,3 +1,5 @@
+> Substituído por [DESIGN.md](../DESIGN.md) em 2026-11-18 (gerado por /impeccable document). Este arquivo fica como histórico.
+
 # Guia visual — Controle de Colaboradores
 
 Autoridade: agente e skill `frontend-design` do workspace; especificidades na skill local [`controle-visual`](../.claude/skills/controle-visual/SKILL.md). Este guia define os tokens e padrões; **a referência visual do usuário, quando informada, tem prioridade** e deve ser registrada na seção final.

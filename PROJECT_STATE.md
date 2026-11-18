@@ -141,3 +141,7 @@ Protótipo local em Next.js App Router, React e TypeScript. A navegação dos oi
 ## Próximo passo
 
 Fazer uma revisão detalhada de acessibilidade e confirmar regras de negócio antes de ampliar a importação para persistência ou desenvolver módulos operacionais.
+
+## DESIGN.md do Impeccable (2026-11-18)
+
+`/impeccable document` (modo Scan) gerou `DESIGN.md` na raiz e `.impeccable/design.json` (sidecar, 8 componentes) a partir do visual aprovado. Estrela-guia: "Repartição Bem Cuidada"; componentes discretos e precisos; cores Azul-Petróleo Institucional (#0b5c74), Ardósia Noturna (#0e2a33), Papel Frio (#f4f6f8); temas claro/escuro. `DESIGN.md` está **congelado** (GOVERNANCA §4): telas novas seguem esse arquivo e mudanças de aparência só a pedido do usuário. `docs/GUIA-VISUAL.md` fica como histórico. Só documentação, sem mudança de código nem publicação.
