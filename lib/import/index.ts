@@ -13,15 +13,21 @@ export { parseTabelaSalarialCsv, parseTabelaSalarialWorkbook } from "./tabela-sa
 export { formatDateBr, normalizeHeader } from "./text.ts";
 export { DEFAULT_SETTINGS, ImportFileError } from "./types.ts";
 export type {
+  AjusteAplicado,
+  AjusteRemuneracao,
   AnyImportResult,
   AnyStoredDataset,
   CargoSalario,
   ColaboradorPlanilha,
+  Competencia,
+  CompetenciaImportada,
   DataStore,
   ImportKind,
   ImportResult,
   ImportWarning,
+  NovoAjuste,
   Origem,
+  RetratoFuncional,
   ServidorECidade,
   SituacaoRemuneracao,
   Settings,

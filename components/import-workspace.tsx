@@ -1,19 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type ChangeEvent, type DragEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ChangeEvent, type DragEvent, type ReactNode } from "react";
 import { BadgeDollarSign, Check, CircleAlert, CircleCheck, FileSpreadsheet, FileText, Info, Loader2, ShieldCheck, Trash2, TriangleAlert, Upload } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { useAuth } from "@/components/auth-gate";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { detectKind, importFile, ImportFileError } from "@/lib/import";
 import type { AnyImportResult, AnyStoredDataset, CargoSalario, ColaboradorPlanilha, ImportKind } from "@/lib/import";
 import { garantirConciliacao } from "@/lib/folha/conciliacao";
+import { buildRetratos, competenciaAtual, periodoBr, validarCompetencia } from "@/lib/folha/historico";
 import { getDataStore, storageMode } from "@/lib/storage";
 
 type AnyResult = AnyImportResult;
@@ -184,6 +186,36 @@ function ReadySummary({ result }: { result: AnyResult }) {
   );
 }
 
+/** Competência (mês/ano) do Cadastro funcional: alimenta o histórico por competência (V6–V8). */
+function CompetenciaField({ value, max, error, onChange }: { value: string; max: string; error: string | null; onChange: (value: string) => void }) {
+  const id = useId();
+  const dicaId = useId();
+  const erroId = useId();
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={id} className="text-sm font-medium">Competência (mês/ano)</label>
+      <Input
+        id={id}
+        type="month"
+        className="sm:max-w-60"
+        value={value}
+        max={max}
+        min="2000-01"
+        required
+        onChange={(event) => onChange(event.target.value)}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? `${dicaId} ${erroId}` : dicaId}
+      />
+      <p id={dicaId} className="text-sm text-muted-foreground">Mês a que este cadastro se refere. Cada competência guarda um retrato no histórico dos funcionários.</p>
+      {error && (
+        <p id={erroId} className="text-sm text-destructive" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function ImportCard({
   kind,
   slot,
@@ -191,6 +223,7 @@ function ImportCard({
   dragging,
   disabled,
   onFiles,
+  extra,
 }: {
   kind: ImportKind;
   slot: Slot;
@@ -198,6 +231,8 @@ function ImportCard({
   dragging: boolean;
   disabled: boolean;
   onFiles: (files: File[]) => void;
+  /** Campos extras quando o arquivo está pronto (ex.: competência do Cadastro funcional). */
+  extra?: ReactNode;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const info = CARD[kind];
@@ -282,6 +317,7 @@ function ImportCard({
           </Alert>
         )}
         {slot.status === "ready" && <ReadySummary result={slot.result} />}
+        {slot.status === "ready" && extra}
       </CardContent>
     </Card>
   );
@@ -303,6 +339,9 @@ export default function ImportWorkspace() {
   const [clearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [notice, setNotice] = useState("");
+  const [mesAtual] = useState(() => competenciaAtual());
+  const [competencia, setCompetencia] = useState(mesAtual);
+  const [competenciasGravadas, setCompetenciasGravadas] = useState<string[]>([]);
   const tokens = useRef<Record<ImportKind, number>>({ ecidade: 0, planilha: 0, salarial: 0 });
   const successRef = useRef<HTMLHeadingElement>(null);
 
@@ -313,15 +352,25 @@ export default function ImportWorkspace() {
   // Depois, cada tipo pode ser reimportado sozinho. Vale por tipo: o que não está gravado precisa vir agora.
   const firstImport = KINDS.every((kind) => !existing[kind]);
   const missingKinds = KINDS.filter((kind) => !existing[kind] && slots[kind].status !== "ready");
-  const canImport = readyKinds.length > 0 && missingKinds.length === 0;
+  const planilhaPronta = slots.planilha.status === "ready";
+  const erroCompetencia = planilhaPronta ? validarCompetencia(competencia) : null;
+  const competenciaExiste = planilhaPronta && erroCompetencia === null && competenciasGravadas.includes(competencia);
+  const canImport = readyKinds.length > 0 && missingKinds.length === 0 && erroCompetencia === null;
   const step = done || saving || replaceOpen ? 3 : readyKinds.length > 0 ? 2 : 1;
 
   async function refreshExisting() {
     try {
       const store = getDataStore();
-      const [ecidade, planilha, salarial] = await Promise.all([store.load("ecidade"), store.load("planilha"), store.load("salarial")]);
+      const [ecidade, planilha, salarial, competencias] = await Promise.all([
+        store.load("ecidade"),
+        store.load("planilha"),
+        store.load("salarial"),
+        // Sem as tabelas de histórico (banco ainda sem a migração), só deixa de avisar a substituição (V8).
+        store.listCompetencias().catch(() => []),
+      ]);
       const info = (dataset: AnyStoredDataset | null): ExistingInfo => (dataset ? { importedAt: dataset.importedAt, count: dataset.records.length } : null);
       setExisting({ ecidade: info(ecidade), planilha: info(planilha), salarial: info(salarial) });
+      setCompetenciasGravadas(competencias.map((item) => item.competencia));
       setStorageError("");
     } catch {
       setStorageError(storageMode() === "supabase" ? "Não foi possível acessar o Supabase. Verifique a conexão e o script supabase/schema.sql." : "Não foi possível acessar o armazenamento deste navegador. A importação pode não funcionar.");
@@ -404,6 +453,7 @@ export default function ImportWorkspace() {
   async function save() {
     setSaving(true);
     setGlobalError("");
+    let historicoFalhou = false;
     try {
       const store = getDataStore();
       const counts: Record<ImportKind, number> = { ecidade: 0, planilha: 0, salarial: 0 };
@@ -420,6 +470,14 @@ export default function ImportWorkspace() {
         }
         const stored = { ...result, schemaVersion: 1 as const, importedAt: new Date().toISOString() };
         await store.replace(kind, stored as AnyStoredDataset);
+        if (kind === "planilha") {
+          const retratos = buildRetratos(result.records as ColaboradorPlanilha[]);
+          try {
+            await store.replaceCompetencia({ competencia, fileName: result.fileName, importedAt: stored.importedAt }, retratos);
+          } catch {
+            historicoFalhou = true;
+          }
+        }
         counts[kind] = slot.result.records.length;
         saved.push(kind);
       }
@@ -432,6 +490,10 @@ export default function ImportWorkspace() {
       setRouteNote("");
       setReplaceOpen(false);
       setDone({ kinds: saved, counts });
+      if (historicoFalhou) {
+        setGlobalError(`O Cadastro funcional foi importado, mas o histórico da competência ${periodoBr(competencia)} não foi gravado. Importe o arquivo de novo para tentar outra vez.`);
+      }
+      setCompetencia(mesAtual);
       await refreshExisting();
     } catch {
       setReplaceOpen(false);
@@ -443,17 +505,20 @@ export default function ImportWorkspace() {
 
   function onImportClick() {
     if (!canImport) return;
-    if (replaceKinds.length > 0) setReplaceOpen(true);
+    if (replaceKinds.length > 0 || competenciaExiste) setReplaceOpen(true);
     else void save();
   }
 
   async function onClear() {
     setClearing(true);
     try {
-      await getDataStore().clear();
+      const store = getDataStore();
+      await store.clear();
+      await store.clearHistorico();
       setNotice("Os dados importados foram removidos.");
       setDone(null);
       setExisting(NO_EXISTING);
+      setCompetenciasGravadas([]);
       setClearOpen(false);
     } catch {
       setClearOpen(false);
@@ -535,6 +600,11 @@ export default function ImportWorkspace() {
             dragging={dragging}
             disabled={saving || somenteLeitura}
             onFiles={(files) => onCardFiles(kind, files)}
+            extra={
+              kind === "planilha" ? (
+                <CompetenciaField value={competencia} max={mesAtual} error={erroCompetencia} onChange={setCompetencia} />
+              ) : undefined
+            }
           />
         ))}
       </div>
@@ -613,17 +683,25 @@ export default function ImportWorkspace() {
         onCancel={() => setReplaceOpen(false)}
         onConfirm={() => void save()}
       >
-        <ul className="list-disc pl-5">
-          {replaceKinds.map((kind) => (
-            <li key={kind}>{CARD[kind].title}</li>
-          ))}
-        </ul>
+        {replaceKinds.length > 0 && (
+          <ul className="list-disc pl-5">
+            {replaceKinds.map((kind) => (
+              <li key={kind}>{CARD[kind].title}</li>
+            ))}
+          </ul>
+        )}
+        {competenciaExiste && (
+          <p className="flex items-start gap-2 pt-2">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
+            <span>A competência {periodoBr(competencia)} já tem registros e será substituída.</span>
+          </p>
+        )}
       </ConfirmDialog>
 
       <ConfirmDialog
         open={clearOpen}
         title="Limpar dados importados?"
-        description="Os três tipos de dados (relatório do e-Cidade, Cadastro funcional e Tabela salarial) serão apagados. O teto da folha informado é mantido. Essa ação não pode ser desfeita."
+        description="Os três tipos de dados (relatório do e-Cidade, Cadastro funcional e Tabela salarial), o histórico por competência e os valores alterados no sistema serão apagados. O teto da folha informado é mantido. Essa ação não pode ser desfeita."
         confirmLabel="Limpar tudo"
         destructive
         busy={clearing}

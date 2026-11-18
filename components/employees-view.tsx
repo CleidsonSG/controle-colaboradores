@@ -15,13 +15,19 @@ import CustoAlimentacao from "@/components/custo-alimentacao";
 import EmployeeHistoryDialog from "@/components/employee-history-dialog";
 import DataTable, { formatMoney, type Column } from "@/components/data-table";
 import { getDataStore, storageMode } from "@/lib/storage";
-import { agregarPorFuncao, conciliarRemuneracao, precisaAtencao, type Conciliacao, type FuncaoConferida, type SituacaoFuncao } from "@/lib/folha/conciliacao";
+import { useAuth } from "@/components/auth-gate";
+import { isSupabaseConfigured } from "@/lib/supabase/client";
+import { aplicarAjustes } from "@/lib/folha/ajustes";
+import { buildRetratos } from "@/lib/folha/historico";
+import { agregarPorFuncao, conciliarRemuneracao, precisaAtencao, type Conciliacao, type FuncaoConferida, type PendenciaFuncao, type SituacaoFuncao } from "@/lib/folha/conciliacao";
 import { custoMensal, subtotais, type Soma } from "@/lib/folha/funcionarios";
 import ConferenciaDetalheDialog from "@/components/conferencia-detalhe-dialog";
 import TerceirizadosPorEmpresa from "@/components/terceirizados-por-empresa";
 import ExportButtons from "@/components/export-buttons";
 import { tabelaDivergencias } from "@/lib/export-funcionarios";
-import type { CargoSalario, ColaboradorPlanilha, SituacaoRemuneracao, StoredDataset } from "@/lib/import";
+import type { AjusteRemuneracao, CargoSalario, ColaboradorPlanilha, SituacaoRemuneracao, StoredDataset } from "@/lib/import";
+
+type SalvarValor = (pessoa: PendenciaFuncao, centavos: number) => Promise<void>;
 
 const SITUACAO: Record<SituacaoRemuneracao, { label: string; variant: "success" | "warning" | "secondary" }> = {
   confere: { label: "Confere", variant: "success" },
@@ -89,7 +95,18 @@ function criarColunas(abrirHistorico: (row: ColaboradorPlanilha, gatilho: HTMLEl
     value: (row) => row.funcao,
     render: (row) => <span className="block min-w-56 whitespace-normal break-normal">{row.funcao}</span>,
   },
-  { key: "remuneracao", header: "Remuneração informada (R$)", kind: "money", value: (row) => row.remuneracao },
+  {
+    key: "remuneracao",
+    header: "Remuneração informada (R$)",
+    kind: "money",
+    value: (row) => row.remuneracao,
+    render: (row) => (
+      <span className="flex flex-col items-end gap-1">
+        {row.remuneracao === null ? <span className="text-muted-foreground">—</span> : formatMoney(row.remuneracao)}
+        {row.ajuste && <Badge variant="secondary">Ajustado no sistema</Badge>}
+      </span>
+    ),
+  },
   { key: "remuneracaoTabela", header: "Remuneração (tabela) (R$)", kind: "money", value: (row) => row.remuneracaoTabela ?? null },
   { key: "diferenca", header: "Diferença (R$)", kind: "money", value: (row) => diferencaDaLinha(row) },
   {
@@ -213,6 +230,11 @@ function PlanilhaPanel({ dataset }: { dataset: StoredDataset<ColaboradorPlanilha
       tabelaRef.current?.focus({ preventScroll: true });
     });
   }
+  // Identidade de cada registro no histórico (homônimos dependem da ordem do arquivo inteiro).
+  const chavePorRegistro = useMemo(() => {
+    const retratos = buildRetratos(dataset.records);
+    return new Map(dataset.records.map((row, index) => [row, retratos[index]?.chaveIdentidade ?? ""]));
+  }, [dataset]);
   const colunas = useMemo(
     () =>
       criarColunas((row, alvo) => {
@@ -221,11 +243,6 @@ function PlanilhaPanel({ dataset }: { dataset: StoredDataset<ColaboradorPlanilha
       }),
     [],
   );
-  // Sem banco de histórico: o período atual vem da data de importação do cadastro.
-  const competencia = useMemo(() => {
-    const data = new Date(dataset.importedAt);
-    return Number.isNaN(data.getTime()) ? "" : `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, "0")}`;
-  }, [dataset.importedAt]);
   const empresas = useMemo(() => unique(dataset.records.map((row) => row.empresaSecretaria)), [dataset]);
   const funcoes = useMemo(() => unique(dataset.records.map((row) => row.funcao)), [dataset]);
   const origens = useMemo(() => unique(dataset.records.map((row) => row.origem)), [dataset]);
@@ -249,7 +266,7 @@ function PlanilhaPanel({ dataset }: { dataset: StoredDataset<ColaboradorPlanilha
       </FilterBar>
       <EmployeeHistoryDialog
         pessoa={aberto?.row ?? null}
-        competencia={competencia}
+        chaveIdentidade={aberto ? chavePorRegistro.get(aberto.row) ?? "" : ""}
         retorno={gatilho}
         onClose={() => setAberto(null)}
       />
@@ -344,7 +361,7 @@ function SituacaoFuncaoSelo({ funcao, onAbrir }: { funcao: FuncaoConferida; onAb
 }
 
 /** Remuneração informada (comissionados e terceirizados) x tabela salarial da Prefeitura. Só agregados; nunca nomes, matrículas ou CPF. */
-function ConferenciaRemuneracao({ conciliacao }: { conciliacao: Conciliacao | null }) {
+function ConferenciaRemuneracao({ conciliacao, onSalvarValor }: { conciliacao: Conciliacao | null; onSalvarValor: SalvarValor }) {
   if (!conciliacao) {
     return (
       <Alert variant="info">
@@ -362,14 +379,21 @@ function ConferenciaRemuneracao({ conciliacao }: { conciliacao: Conciliacao | nu
     );
   }
   if (conciliacao.resumo.pessoas === 0) return null;
-  return <ConferenciaCard conciliacao={conciliacao} />;
+  return <ConferenciaCard conciliacao={conciliacao} onSalvarValor={onSalvarValor} />;
 }
 
-function ConferenciaCard({ conciliacao }: { conciliacao: Conciliacao }) {
+const chaveDaFuncao = (funcao: FuncaoConferida) => `${funcao.origem}|${funcao.funcao}`;
+
+function ConferenciaCard({ conciliacao, onSalvarValor }: { conciliacao: Conciliacao; onSalvarValor: SalvarValor }) {
   const { porSituacao } = conciliacao.resumo;
-  const [aberta, setAberta] = useState<FuncaoConferida | null>(null);
+  const { isAdmin } = useAuth();
+  // Com Supabase, só administradores alteram (o banco também bloqueia). No modo local, o usuário do navegador pode.
+  const podeAlterar = !isSupabaseConfigured() || isAdmin;
+  // Guarda a chave, não o objeto: depois de um ajuste, o detalhe mostra a função recalculada.
+  const [abertaChave, setAbertaChave] = useState<string | null>(null);
   const [gatilho, setGatilho] = useState<HTMLElement | null>(null);
   const funcoes = useMemo(() => agregarPorFuncao(conciliacao.rows), [conciliacao]);
+  const aberta = abertaChave === null ? null : funcoes.find((funcao) => chaveDaFuncao(funcao) === abertaChave) ?? null;
   const nomesRepetidos = useMemo(() => {
     const vistos = new Set<string>();
     return new Set(funcoes.flatMap((f) => (vistos.has(f.funcao) ? [f.funcao] : (vistos.add(f.funcao), []))));
@@ -400,7 +424,7 @@ function ConferenciaCard({ conciliacao }: { conciliacao: Conciliacao }) {
             </TableHeader>
             <TableBody>
               {funcoes.map((funcao) => (
-                <TableRow key={`${funcao.origem}|${funcao.funcao}`}>
+                <TableRow key={chaveDaFuncao(funcao)}>
                   <TableCell className="whitespace-normal">
                     {funcao.funcao}
                     {nomesRepetidos.has(funcao.funcao) && <span className="text-muted-foreground"> ({funcao.origem})</span>}
@@ -414,7 +438,7 @@ function ConferenciaCard({ conciliacao }: { conciliacao: Conciliacao }) {
                       funcao={funcao}
                       onAbrir={(alvo, botao) => {
                         setGatilho(botao);
-                        setAberta(alvo);
+                        setAbertaChave(chaveDaFuncao(alvo));
                       }}
                     />
                   </TableCell>
@@ -435,7 +459,7 @@ function ConferenciaCard({ conciliacao }: { conciliacao: Conciliacao }) {
           </div>
         )}
       </CardContent>
-      <ConferenciaDetalheDialog funcao={aberta} retorno={gatilho} onClose={() => setAberta(null)} />
+      <ConferenciaDetalheDialog funcao={aberta} retorno={gatilho} onClose={() => setAbertaChave(null)} podeAlterar={podeAlterar} onSalvarValor={onSalvarValor} />
     </Card>
   );
 }
@@ -443,7 +467,13 @@ function ConferenciaCard({ conciliacao }: { conciliacao: Conciliacao }) {
 type LoadState =
   | { status: "loading" }
   | { status: "error" }
-  | { status: "ready"; planilha: StoredDataset<ColaboradorPlanilha> | null; salarial: StoredDataset<CargoSalario> | null };
+  | {
+      status: "ready";
+      planilha: StoredDataset<ColaboradorPlanilha> | null;
+      salarial: StoredDataset<CargoSalario> | null;
+      /** Ajustes de remuneração da importação atual (P2): aplicados na leitura, nunca gravados no dataset. */
+      ajustes: AjusteRemuneracao[];
+    };
 
 export default function EmployeesView() {
   const [state, setState] = useState<LoadState>({ status: "loading" });
@@ -451,8 +481,9 @@ export default function EmployeesView() {
   // Reconcilia na leitura (idempotente): cobre dados salvos antes da conciliação e tabela importada depois.
   const conciliado = useMemo(() => {
     if (state.status !== "ready" || !state.planilha) return null;
-    if (!state.salarial) return { planilha: state.planilha, conciliacao: null };
-    const conciliacao = conciliarRemuneracao(state.planilha.records, state.salarial.records);
+    const records = aplicarAjustes(state.planilha.records, state.planilha.importedAt, state.ajustes);
+    if (!state.salarial) return { planilha: { ...state.planilha, records }, conciliacao: null };
+    const conciliacao = conciliarRemuneracao(records, state.salarial.records);
     return { planilha: { ...state.planilha, records: conciliacao.rows }, conciliacao };
   }, [state]);
 
@@ -462,7 +493,9 @@ export default function EmployeesView() {
       try {
         const store = getDataStore();
         const [planilha, salarial] = await Promise.all([store.load("planilha"), store.load("salarial")]);
-        if (active) setState({ status: "ready", planilha, salarial });
+        // Sem a tabela de ajustes (ex.: banco ainda sem a migração), a tela segue com os valores da planilha.
+        const ajustes = planilha ? await store.loadAjustes(planilha.importedAt).catch((): AjusteRemuneracao[] => []) : [];
+        if (active) setState({ status: "ready", planilha, salarial, ajustes });
       } catch {
         if (active) setState({ status: "error" });
       }
@@ -471,6 +504,18 @@ export default function EmployeesView() {
       active = false;
     };
   }, []);
+
+  async function salvarValor(pessoa: PendenciaFuncao, centavos: number) {
+    if (state.status !== "ready" || !state.planilha) return;
+    const ajuste = await getDataStore().saveAjuste({
+      importedAt: state.planilha.importedAt,
+      posicao: pessoa.posicao,
+      origem: pessoa.origem,
+      linha: pessoa.linha,
+      valorCentavos: centavos,
+    });
+    setState((atual) => (atual.status === "ready" ? { ...atual, ajustes: [...atual.ajustes, ajuste] } : atual));
+  }
 
   function body() {
     if (state.status === "loading") {
@@ -508,7 +553,7 @@ export default function EmployeesView() {
     }
     return (
       <>
-        <ConferenciaRemuneracao conciliacao={conciliado.conciliacao} />
+        <ConferenciaRemuneracao conciliacao={conciliado.conciliacao} onSalvarValor={salvarValor} />
         <PlanilhaPanel dataset={conciliado.planilha} />
       </>
     );

@@ -4,7 +4,7 @@ import { createSupabaseStore, juntarIndicacoes, separarIndicacoes } from "../lib
 
 /** Cliente falso: tabelas em memória; `isAdmin = false` imita a RLS (0 linhas / erro 42501 em indicacoes). */
 function fakeClient({ isAdmin = true, failIndicacoes = false } = {}) {
-  const tables = { datasets: new Map(), indicacoes: new Map(), configuracoes: new Map() };
+  const tables = { datasets: new Map(), indicacoes: new Map(), configuracoes: new Map(), ajustes_remuneracao: new Map() };
   const keyOf = (table, row) => (table === "datasets" ? row.kind : row.id);
   const denied = (table) => table === "indicacoes" && (!isAdmin || failIndicacoes);
   const from = (table) => {
@@ -24,6 +24,7 @@ function fakeClient({ isAdmin = true, failIndicacoes = false } = {}) {
         const d = {
           eq: (c, v) => (filters.push([c, v]), d),
           in: (c, v) => (filters.push([c, v]), d),
+          gte: () => d,
           then: (resolve) => {
             if (!denied(table)) for (const r of rows()) tables[table].delete(keyOf(table, r));
             resolve({ error: null });
@@ -70,8 +71,10 @@ test("clear da planilha apaga as indicações", async () => {
   const { client, tables } = fakeClient();
   const store = createSupabaseStore(client);
   await store.replace("planilha", dataset([rec("1", "Comissionado", "X")]));
+  tables.ajustes_remuneracao.set(1, { id: 1 });
   await store.clear("planilha");
   assert.equal(tables.indicacoes.size, 0);
+  assert.equal(tables.ajustes_remuneracao.size, 0);
 });
 
 test("juntar por matrícula + origem quando a ordem diverge", () => {

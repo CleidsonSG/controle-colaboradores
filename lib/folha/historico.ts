@@ -1,4 +1,5 @@
 /** Histórico do funcionário: lógica pura (sem dados pessoais reais nem acesso a banco). */
+import type { ColaboradorPlanilha, Competencia, RetratoFuncional } from "../import/types.ts";
 
 export type RegistroHistorico = { competencia: string; cargo: string; lotacao: string };
 
@@ -103,3 +104,75 @@ export function calcularHistorico(registros: RegistroHistorico[]): Historico {
     linhas: linhas.reverse(),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Retratos por competência (fatia 3). Identidade e validações em docs/HISTORICO-DADOS.md §2.
+
+export const MAX_RETRATOS = 50_000;
+export const MSG_COMPETENCIA_VAZIA = "Informe a competência (mês/ano) deste cadastro.";
+export const MSG_COMPETENCIA_FUTURA = "A competência não pode ser posterior ao mês atual.";
+const FUSO = "America/Sao_Paulo";
+
+/** Minúsculas, sem acento, só letras e números separados por um espaço. */
+export function normalizarIdentidade(value: string): string {
+  return value.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+/** `m:<matrícula>` (zeros à esquerda preservados) ou `n:<nome>|<empresa>` normalizados. */
+export function chaveIdentidadeBase(pessoa: Pick<ColaboradorPlanilha, "matricula" | "servidor" | "empresaSecretaria">): string {
+  const matricula = pessoa.matricula.replace(/\s+/g, "");
+  if (matricula) return `m:${matricula}`;
+  return `n:${normalizarIdentidade(pessoa.servidor)}|${normalizarIdentidade(pessoa.empresaSecretaria)}`;
+}
+
+/** Um retrato por registro, na ordem do arquivo. Chave repetida: 2ª em diante com "#2", "#3"… e todas marcadas como possível duplicidade. */
+export function buildRetratos(records: ColaboradorPlanilha[]): Omit<RetratoFuncional, "competencia">[] {
+  const bases = records.map(chaveIdentidadeBase);
+  const total = new Map<string, number>();
+  for (const base of bases) total.set(base, (total.get(base) ?? 0) + 1);
+  const vistos = new Map<string, number>();
+  return records.map((record, index) => {
+    const base = bases[index]!;
+    const ordem = (vistos.get(base) ?? 0) + 1;
+    vistos.set(base, ordem);
+    return {
+      chaveIdentidade: ordem === 1 ? base : `${base}#${ordem}`,
+      origem: record.origem,
+      matricula: record.matricula.replace(/\s+/g, ""),
+      nome: record.servidor.trim(),
+      empresaSecretaria: record.empresaSecretaria.trim(),
+      funcao: record.funcao.trim(),
+      lotacao: record.lotacao.trim(),
+      possivelDuplicidade: record.possivelDuplicidade || (total.get(base) ?? 0) > 1,
+    };
+  });
+}
+
+/** Mês atual ("AAAA-MM") no fuso de São Paulo. */
+export function competenciaAtual(agora: Date = new Date()): Competencia {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: FUSO, year: "numeric", month: "2-digit" }).format(agora).slice(0, 7);
+}
+
+/** Mensagem de erro (V6/V7) ou null quando a competência é válida. */
+export function validarCompetencia(competencia: string, agora: Date = new Date()): string | null {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(competencia) || competencia < "2000-01") return MSG_COMPETENCIA_VAZIA;
+  if (competencia > competenciaAtual(agora)) return MSG_COMPETENCIA_FUTURA;
+  return null;
+}
+
+/** Mesmas regras da RPC `substituir_historico_competencia`: competência válida, até 50 000 itens e chaves únicas. Lança Error. */
+export function validarSubstituicao(competencia: string, retratos: Omit<RetratoFuncional, "competencia">[], agora: Date = new Date()): void {
+  const erro = validarCompetencia(competencia, agora);
+  if (erro) throw new Error(erro);
+  if (retratos.length > MAX_RETRATOS) throw new Error("Arquivo grande demais para o histórico.");
+  const chaves = new Set(retratos.map((retrato) => retrato.chaveIdentidade));
+  if (chaves.size !== retratos.length) throw new Error("Há pessoas repetidas no histórico desta competência.");
+}
+
+/** "2026-11" ↔ "2026-11-01" (coluna date do banco). */
+export const competenciaParaData = (competencia: Competencia) => `${competencia}-01`;
+export const dataParaCompetencia = (data: string): Competencia => data.slice(0, 7);
+
+/** Retratos (competência desc ou não) → registros do cálculo do histórico. */
+export const registrosDeRetratos = (retratos: RetratoFuncional[]): RegistroHistorico[] =>
+  retratos.map((retrato) => ({ competencia: retrato.competencia, cargo: retrato.funcao, lotacao: retrato.lotacao }));

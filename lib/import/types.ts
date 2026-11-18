@@ -40,6 +40,39 @@ export type ColaboradorPlanilha = {
   origem: Origem;
   linha: number;
   possivelDuplicidade: boolean;
+  /** Preenchido só na leitura, quando a remuneração foi alterada no sistema (nunca gravado no dataset). */
+  ajuste?: AjusteAplicado;
+};
+
+/** Auditoria visível do ajuste aplicado a um registro (selo "Ajustado no sistema"). */
+export type AjusteAplicado = { valorAnteriorCentavos: number | null; alteradoPorNome: string; alteradoEm: string };
+
+/** Competência mensal no formato "AAAA-MM". */
+export type Competencia = string;
+
+/** Retrato funcional de uma pessoa numa competência. Sem valores, indicação ou CPF (minimização, LGPD). */
+export type RetratoFuncional = {
+  competencia: Competencia;
+  chaveIdentidade: string;
+  origem: Origem;
+  matricula: string;
+  nome: string;
+  empresaSecretaria: string;
+  funcao: string;
+  lotacao: string;
+  possivelDuplicidade: boolean;
+};
+
+export type CompetenciaImportada = { competencia: Competencia; fileName: string; importedAt: string; total: number };
+
+export type NovoAjuste = { importedAt: string; posicao: number; origem: Origem; linha: number; valorCentavos: number };
+
+export type AjusteRemuneracao = NovoAjuste & {
+  id: number;
+  nome: string;
+  valorAnteriorCentavos: number | null;
+  alteradoPorNome: string;
+  alteradoEm: string;
 };
 
 export type ImportWarning = {
@@ -96,6 +129,19 @@ export interface DataStore {
   /** Configurações informadas pelo usuário (ex.: teto da folha). Não são apagadas por clear(). */
   loadSettings(): Promise<Settings>;
   saveSettings(settings: Settings): Promise<void>;
+  /** Substitui atomicamente o retrato da competência; retorna o total gravado. */
+  replaceCompetencia(meta: Omit<CompetenciaImportada, "total">, retratos: Omit<RetratoFuncional, "competencia">[]): Promise<number>;
+  /** Mais recente primeiro. */
+  listCompetencias(): Promise<CompetenciaImportada[]>;
+  /** Competência mais recente primeiro. */
+  loadHistoricoPessoa(chaveIdentidade: string): Promise<RetratoFuncional[]>;
+  loadRetratosCompetencia(competencia: Competencia): Promise<RetratoFuncional[]>;
+  /** Sem argumento, apaga todo o histórico. */
+  clearHistorico(competencia?: Competencia): Promise<void>;
+  /** Grava um ajuste de remuneração e devolve a linha com a auditoria preenchida. */
+  saveAjuste(ajuste: NovoAjuste): Promise<AjusteRemuneracao>;
+  /** Só o ajuste vigente (o mais recente) de cada posição daquela importação. */
+  loadAjustes(importedAt: string): Promise<AjusteRemuneracao[]>;
 }
 
 export type Settings = {

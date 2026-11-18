@@ -4,7 +4,7 @@
  * Origem pela aba (Comissionado com a aba Comissionado, Terceirizado com a aba Terceirizado). Comparação em centavos.
  */
 import { chaveFuncao } from "../import/tabela-salarial.ts";
-import type { CargoSalario, ColaboradorPlanilha, Origem, SituacaoRemuneracao } from "../import/types.ts";
+import type { AjusteAplicado, CargoSalario, ColaboradorPlanilha, Origem, SituacaoRemuneracao } from "../import/types.ts";
 
 export const SEM_EMPRESA_CONCILIACAO = "Sem empresa informada";
 export const SEM_FUNCAO_CONCILIACAO = "Sem função informada";
@@ -167,6 +167,11 @@ export type PendenciaFuncao = {
   /** Centavos; null = remuneração não informada. */
   valorInformado: number | null;
   motivo: string;
+  /** Índice do registro no conjunto importado (identifica o ajuste de remuneração). */
+  posicao: number;
+  origem: Origem;
+  linha: number;
+  ajuste?: AjusteAplicado;
 };
 
 export type FuncaoConferida = {
@@ -184,10 +189,10 @@ export type FuncaoConferida = {
 
 type Acumulador = { item: FuncaoConferida; informados: Set<number>; semReferencia: boolean; diverge: number; naoInformada: number };
 
-/** Uma linha por função (e origem) para a tabela da conferência. Exige linhas já conciliadas; linhas sem situação são ignoradas. */
+/** Uma linha por função (e origem) para a tabela da conferência. Exige linhas já conciliadas, na ordem do conjunto importado (posição); linhas sem situação são ignoradas. */
 export function agregarPorFuncao(rows: ColaboradorPlanilha[]): FuncaoConferida[] {
   const mapa = new Map<string, Acumulador>();
-  for (const row of rows) {
+  for (const [posicao, row] of rows.entries()) {
     const situacao = row.situacaoRemuneracao;
     if (!situacao) continue;
     const chave = `${row.origem}|${chaveFuncao(row.funcao)}`;
@@ -214,6 +219,10 @@ export function agregarPorFuncao(rows: ColaboradorPlanilha[]): FuncaoConferida[]
         valorReferencia: referencia,
         valorInformado: informado,
         motivo: situacao === "diverge" ? MOTIVO_DIVERGE : MOTIVO_NAO_INFORMADA,
+        posicao,
+        origem: row.origem,
+        linha: row.linha,
+        ...(row.ajuste ? { ajuste: row.ajuste } : {}),
       });
     }
     mapa.set(chave, acc);

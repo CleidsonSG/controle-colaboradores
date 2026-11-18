@@ -4,6 +4,7 @@
  */
 import { AVISO_RESTRITO, PDF_MIME_TYPE, XLSX_MIME_TYPE } from "./export-indicacoes.ts";
 import type { FuncaoConferida, PendenciaFuncao } from "./folha/conciliacao.ts";
+import type { LinhaHistorico } from "./folha/historico.ts";
 
 export type Celula = string | number | null;
 export type ColunaExportacao = { titulo: string; moeda?: boolean };
@@ -123,5 +124,15 @@ export function tabelaDivergencias(funcoes: FuncaoConferida[]): TabelaExportacao
     aba: "Divergências",
     colunas: [{ titulo: "Função" }, ...COLUNAS_PENDENCIA],
     linhas: funcoes.flatMap((funcao) => funcao.pendentes.map((p) => [funcao.funcao, ...linhaPendencia(p)])),
+  };
+}
+
+/** Histórico de uma pessoa: uma linha por competência, da mais recente para a mais antiga. Sem valores nem CPF. */
+export function tabelaHistoricoPessoa(nome: string, linhas: LinhaHistorico[]): TabelaExportacao {
+  return {
+    titulo: `Histórico do funcionário: ${nome}`,
+    aba: "Histórico",
+    colunas: [{ titulo: "Período" }, { titulo: "Cargo" }, { titulo: "Lotação" }, { titulo: "Mudança" }, { titulo: "Detalhe" }],
+    linhas: linhas.map((linha) => [linha.periodo, linha.cargo, linha.lotacao, linha.mudanca, [linha.detalhe, linha.nota].filter(Boolean).join("; ")]),
   };
 }
