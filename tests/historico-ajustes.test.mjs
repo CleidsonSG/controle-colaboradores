@@ -5,6 +5,7 @@ import {
   aplicarAjustes,
   parseValorBr,
   validarValor,
+  MSG_REGISTRO_AUSENTE,
   MSG_REIMPORTADO,
   MSG_VALOR_CONFIRMAR,
   MSG_VALOR_INVALIDO,
@@ -163,4 +164,44 @@ test("armazenamento local: ajuste confere a importação e guarda o valor anteri
   await assert.rejects(store.saveAjuste({ ...novo, importedAt: IMPORT_1 }), { message: MSG_REIMPORTADO });
   await store.clear("planilha");
   assert.deepEqual(await store.loadAjustes(IMPORT_2), []);
+});
+
+test("lote: grava um ajuste por pessoa, tudo ou nada", async () => {
+  const store = createMemoryStore();
+  const records = [pessoa({ remuneracao: 1500 }), pessoa({ servidor: "Pessoa Exemplo 02", linha: 3, remuneracao: null }), pessoa({ servidor: "Pessoa Exemplo 03", linha: 4, remuneracao: 900 })];
+  await store.replace("planilha", { kind: "planilha", fileName: "c.xlsm", importedAt: IMPORT_2, schemaVersion: 1, records, countsBySheet: [], warnings: [] });
+  const lote = records.map((r, posicao) => ({ importedAt: IMPORT_2, posicao, origem: "Terceirizado", linha: r.linha, valorCentavos: 500000 }));
+
+  const gravados = await store.saveAjustes(lote);
+  assert.equal(gravados.length, 3);
+  assert.deepEqual(gravados.map((a) => a.valorAnteriorCentavos), [150000, null, 90000]);
+  assert.equal(new Set(gravados.map((a) => a.id)).size, 3);
+  assert.deepEqual((await store.loadAjustes(IMPORT_2)).map((a) => a.valorCentavos), [500000, 500000, 500000]);
+
+  // Um item inválido (linha que não bate) derruba o lote inteiro, sem gravação parcial.
+  const ruim = [{ ...lote[0], valorCentavos: 600000 }, { ...lote[1], linha: 99, valorCentavos: 600000 }];
+  await assert.rejects(store.saveAjustes(ruim), { message: MSG_REGISTRO_AUSENTE });
+  assert.deepEqual((await store.loadAjustes(IMPORT_2)).map((a) => a.valorCentavos), [500000, 500000, 500000]);
+  await assert.rejects(store.saveAjustes([{ ...lote[0], importedAt: IMPORT_1 }]), { message: MSG_REIMPORTADO });
+  assert.deepEqual(await store.saveAjustes([]), []);
+});
+
+test("detalhe da função lista todas as pessoas: pendentes primeiro, com motivo", () => {
+  const records = [
+    pessoa({ servidor: "Pessoa Exemplo 01", remuneracao: 1850 }),
+    pessoa({ servidor: "Pessoa Exemplo 02", linha: 3, remuneracao: 1000 }),
+    pessoa({ servidor: "Pessoa Exemplo 03", linha: 4, remuneracao: null }),
+  ];
+  const tabela = [{ cargo: "FUNÇÃO EXEMPLO A", salario: 1850, linha: 2, origem: "Terceirizado" }];
+  const [funcao] = agregarPorFuncao(conciliarRemuneracao(records, tabela).rows);
+  assert.deepEqual(funcao.todas.map((p) => [p.servidor, p.motivo]), [
+    ["Pessoa Exemplo 02", "Valor diferente da referência"],
+    ["Pessoa Exemplo 03", "Remuneração não informada"],
+    ["Pessoa Exemplo 01", "Ok"],
+  ]);
+  assert.equal(funcao.pendentes.length, 2);
+  const [semRef] = agregarPorFuncao(conciliarRemuneracao(records, []).rows);
+  assert.equal(semRef.situacao, "sem-referencia");
+  assert.equal(semRef.pendentes.length, 0);
+  assert.ok(semRef.todas.some((p) => p.motivo === "Sem referência"));
 });

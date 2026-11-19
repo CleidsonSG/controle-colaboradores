@@ -85,7 +85,7 @@ test("xlsx: N linhas de dados com os cabeçalhos visíveis; PDF gera blob", asyn
   });
   assert.ok(cabecalho > 0);
   assert.deepEqual(cab.map((_, i) => sheet.getRow(cabecalho).getCell(i + 1).value), cab);
-  assert.equal(sheet.rowCount - cabecalho, 3);
+  assert.equal(sheet.rowCount - cabecalho, por("FUNÇÃO EXEMPLO A").todas.length);
   assert.equal(sheet.getRow(cabecalho + 1).getCell(3).value, 2000);
 
   const pdf = await gerarPdfTabela(tabelaDivergencias(funcoes.filter(precisaAtencao)));

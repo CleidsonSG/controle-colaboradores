@@ -27,10 +27,10 @@ import ExportButtons from "@/components/export-buttons";
 import { tabelaDivergencias } from "@/lib/export-funcionarios";
 import type { AjusteRemuneracao, CargoSalario, ColaboradorPlanilha, SituacaoRemuneracao, StoredDataset } from "@/lib/import";
 
-type SalvarValor = (pessoa: PendenciaFuncao, centavos: number) => Promise<void>;
+type SalvarValor = (pessoas: PendenciaFuncao[], centavos: number) => Promise<void>;
 
 const SITUACAO: Record<SituacaoRemuneracao, { label: string; variant: "success" | "warning" | "secondary" }> = {
-  confere: { label: "Confere", variant: "success" },
+  confere: { label: "Ok", variant: "success" },
   diverge: { label: "Diverge", variant: "warning" },
   "sem-valor": { label: "Sem valor na tabela", variant: "secondary" },
   "fora-da-tabela": { label: "Fora da tabela", variant: "secondary" },
@@ -325,7 +325,7 @@ function KpiStrip({ planilha }: { planilha: StoredDataset<ColaboradorPlanilha> |
 }
 
 const SITUACAO_FUNCAO: Record<SituacaoFuncao, { label: string; variant: "success" | "warning" | "secondary" }> = {
-  confere: { label: "Confere", variant: "success" },
+  confere: { label: "Ok", variant: "success" },
   diverge: { label: "Diverge", variant: "warning" },
   "nao-informada": { label: "Não informada", variant: "secondary" },
   "sem-referencia": { label: "Sem referência", variant: "secondary" },
@@ -337,7 +337,7 @@ function ValorInformado({ funcao }: { funcao: FuncaoConferida }) {
   return <>{reais(funcao.valoresInformados[0] ?? 0)}</>;
 }
 
-/** Selo de situação da função: botão que abre o detalhe quando há pessoas a conferir; informativo nos demais casos. */
+/** Selo de situação da função: sempre um botão que abre o detalhe (todas as situações). */
 function SituacaoFuncaoSelo({ funcao, onAbrir }: { funcao: FuncaoConferida; onAbrir: (funcao: FuncaoConferida, gatilho: HTMLElement) => void }) {
   const { label, variant } = SITUACAO_FUNCAO[funcao.situacao];
   const selo = (
@@ -346,7 +346,6 @@ function SituacaoFuncaoSelo({ funcao, onAbrir }: { funcao: FuncaoConferida; onAb
       {label}
     </Badge>
   );
-  if (!precisaAtencao(funcao)) return selo;
   return (
     <button
       type="button"
@@ -505,16 +504,14 @@ export default function EmployeesView() {
     };
   }, []);
 
-  async function salvarValor(pessoa: PendenciaFuncao, centavos: number) {
+  async function salvarValor(pessoas: PendenciaFuncao[], centavos: number) {
     if (state.status !== "ready" || !state.planilha) return;
-    const ajuste = await getDataStore().saveAjuste({
-      importedAt: state.planilha.importedAt,
-      posicao: pessoa.posicao,
-      origem: pessoa.origem,
-      linha: pessoa.linha,
-      valorCentavos: centavos,
-    });
-    setState((atual) => (atual.status === "ready" ? { ...atual, ajustes: [...atual.ajustes, ajuste] } : atual));
+    const { importedAt } = state.planilha;
+    // Uma única gravação em lote: se falhar, nada é aplicado na tela.
+    const novos = await getDataStore().saveAjustes(
+      pessoas.map((pessoa) => ({ importedAt, posicao: pessoa.posicao, origem: pessoa.origem, linha: pessoa.linha, valorCentavos: centavos })),
+    );
+    setState((atual) => (atual.status === "ready" ? { ...atual, ajustes: [...atual.ajustes, ...novos] } : atual));
   }
 
   function body() {

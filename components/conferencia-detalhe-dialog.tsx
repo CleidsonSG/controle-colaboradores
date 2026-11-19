@@ -21,8 +21,8 @@ type Props = {
   onClose: () => void;
   /** Administrador (ou modo local): mostra "Alterar valor". */
   podeAlterar: boolean;
-  /** Grava o novo valor (centavos); rejeita com Error de mensagem pt-BR. */
-  onSalvarValor: (pessoa: PendenciaFuncao, centavos: number) => Promise<void>;
+  /** Grava o novo valor (centavos) para uma ou várias pessoas, tudo ou nada; rejeita com Error de mensagem pt-BR. */
+  onSalvarValor: (pessoas: PendenciaFuncao[], centavos: number) => Promise<void>;
 };
 
 const reais = (centavos: number | null) => (centavos === null ? "—" : formatMoney(centavos / 100));
@@ -57,14 +57,18 @@ function AlterarValorBotao({ pessoa, onAbrir }: { pessoa: PendenciaFuncao; onAbr
   );
 }
 
+type Alcance = "uma" | "todas";
+
 type FormProps = {
   pessoa: PendenciaFuncao;
-  onSalvar: (centavos: number) => Promise<void>;
+  /** Total de pessoas da função (alcance "todas"). */
+  total: number;
+  onSalvar: (centavos: number, alcance: Alcance) => Promise<void>;
   onCancelar: () => void;
 };
 
 /** Formulário de um valor (V1–V3): erro ligado ao campo; acima de R$ 100.000,00 pede para salvar de novo o mesmo valor. */
-function AlterarValorForm({ pessoa, onSalvar, onCancelar }: FormProps) {
+function AlterarValorForm({ pessoa, total, onSalvar, onCancelar }: FormProps) {
   const campoId = useId();
   const erroId = useId();
   const tituloId = useId();
@@ -73,6 +77,8 @@ function AlterarValorForm({ pessoa, onSalvar, onCancelar }: FormProps) {
   const [erro, setErro] = useState("");
   const [confirmar, setConfirmar] = useState<number | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [alcance, setAlcance] = useState<Alcance>("uma");
+  const alcanceNome = useId();
 
   useEffect(() => {
     campoRef.current?.focus();
@@ -92,7 +98,7 @@ function AlterarValorForm({ pessoa, onSalvar, onCancelar }: FormProps) {
     setSalvando(true);
     setErro("");
     try {
-      await onSalvar(resultado.centavos);
+      await onSalvar(resultado.centavos, alcance);
     } catch (caught) {
       setErro(caught instanceof Error && caught.message ? caught.message : MSG_FALHA_SALVAR);
       setSalvando(false);
@@ -130,6 +136,19 @@ function AlterarValorForm({ pessoa, onSalvar, onCancelar }: FormProps) {
           </p>
         )}
       </div>
+      {total > 1 && (
+        <fieldset className="flex flex-col gap-2" disabled={salvando}>
+          <legend className="mb-1 text-sm font-medium">Aplicar a</legend>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="radio" name={alcanceNome} className="size-4 accent-primary" checked={alcance === "uma"} onChange={() => setAlcance("uma")} />
+            Somente esta pessoa
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="radio" name={alcanceNome} className="size-4 accent-primary" checked={alcance === "todas"} onChange={() => setAlcance("todas")} />
+            Todas as {total.toLocaleString("pt-BR")} pessoas da função
+          </label>
+        </fieldset>
+      )}
       <div className="flex flex-wrap gap-2">
         <Button type="submit" disabled={salvando}>
           {salvando && <Loader2 className="animate-spin" aria-hidden="true" />}
@@ -141,15 +160,16 @@ function AlterarValorForm({ pessoa, onSalvar, onCancelar }: FormProps) {
   );
 }
 
-/** Detalhe da função: pessoas com divergência ou sem remuneração; administradores alteram o valor (R7). */
+/** Detalhe da função: todas as pessoas (pendentes primeiro) com o motivo; administradores alteram o valor de uma ou de todas (R7). */
 export default function ConferenciaDetalheDialog({ funcao, retorno, onClose, podeAlterar, onSalvarValor }: Props) {
   const titleRef = useRef<HTMLHeadingElement>(null);
-  const pendentes = funcao?.pendentes ?? [];
+  const pessoas = funcao?.todas ?? [];
+  const atencao = funcao?.pendentes.length ?? 0;
   const [editando, setEditando] = useState<number | null>(null);
   // Mantido depois de fechar o formulário: o foco volta para o botão "Alterar valor" que o abriu.
   const [gatilhoEdicao, setGatilhoEdicao] = useState<HTMLElement | null>(null);
   const [mensagem, setMensagem] = useState("");
-  const pessoaEditada = pendentes.find((pessoa) => pessoa.posicao === editando) ?? null;
+  const pessoaEditada = pessoas.find((pessoa) => pessoa.posicao === editando) ?? null;
 
   function abrirEdicao(pessoa: PendenciaFuncao, gatilho: HTMLElement) {
     setGatilhoEdicao(gatilho);
@@ -164,10 +184,11 @@ export default function ConferenciaDetalheDialog({ funcao, retorno, onClose, pod
     });
   }
 
-  async function salvar(pessoa: PendenciaFuncao, centavos: number) {
-    await onSalvarValor(pessoa, centavos);
+  async function salvar(pessoa: PendenciaFuncao, centavos: number, alcance: Alcance) {
+    const alvo = alcance === "todas" ? pessoas : [pessoa];
+    await onSalvarValor(alvo, centavos);
     setEditando(null);
-    setMensagem("Remuneração atualizada.");
+    setMensagem(alvo.length > 1 ? `Remuneração atualizada para ${alvo.length.toLocaleString("pt-BR")} pessoas.` : "Remuneração atualizada.");
     devolverFoco();
   }
 
@@ -199,7 +220,7 @@ export default function ConferenciaDetalheDialog({ funcao, retorno, onClose, pod
                 {funcao.funcao}
               </DialogTitle>
               <DialogDescription>
-                {pendentes.length === 1 ? "1 pessoa precisa de atenção" : `${pendentes.length.toLocaleString("pt-BR")} pessoas precisam de atenção`} · {funcao.origem}
+                {pessoas.length === 1 ? "1 pessoa" : `${pessoas.length.toLocaleString("pt-BR")} pessoas`} · {atencao === 1 ? "1 precisa de atenção" : `${atencao.toLocaleString("pt-BR")} precisam de atenção`} · {funcao.origem}
               </DialogDescription>
             </DialogHeader>
 
@@ -212,13 +233,13 @@ export default function ConferenciaDetalheDialog({ funcao, retorno, onClose, pod
               )}
             </p>
 
-            {pendentes.length === 0 ? (
-              <p className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">Nenhuma pessoa com ajuste pendente nesta função.</p>
+            {pessoas.length === 0 ? (
+              <p className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">Nenhuma pessoa nesta função.</p>
             ) : (
               <>
-                <div className="hidden max-h-96 overflow-auto rounded-lg border md:block" tabIndex={0} role="region" aria-label={`Pessoas da função ${funcao.funcao} com atenção pendente`}>
+                <div className="hidden max-h-96 overflow-auto rounded-lg border md:block" tabIndex={0} role="region" aria-label={`Pessoas da função ${funcao.funcao}`}>
                   <Table>
-                    <caption className="sr-only">Pessoas com valor diferente da referência ou sem remuneração informada</caption>
+                    <caption className="sr-only">Pessoas da função, com o motivo da situação</caption>
                     <TableHeader className="sticky top-0 bg-muted/95">
                       <TableRow className="hover:bg-transparent">
                         <TableHead scope="col">Servidor</TableHead>
@@ -230,7 +251,7 @@ export default function ConferenciaDetalheDialog({ funcao, retorno, onClose, pod
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {pendentes.map((pessoa) => (
+                      {pessoas.map((pessoa) => (
                         <TableRow key={pessoa.posicao}>
                           <TableCell className="whitespace-normal">{pessoa.servidor}</TableCell>
                           <TableCell className="whitespace-normal">{pessoa.empresa}</TableCell>
@@ -252,8 +273,8 @@ export default function ConferenciaDetalheDialog({ funcao, retorno, onClose, pod
                     </TableBody>
                   </Table>
                 </div>
-                <ul className="flex flex-col gap-2 md:hidden" aria-label={`Pessoas da função ${funcao.funcao} com atenção pendente`}>
-                  {pendentes.map((pessoa) => (
+                <ul className="flex flex-col gap-2 md:hidden" aria-label={`Pessoas da função ${funcao.funcao}`}>
+                  {pessoas.map((pessoa) => (
                     <li key={pessoa.posicao} className="flex flex-col gap-1 rounded-lg border bg-card p-3 text-sm">
                       <span className="font-medium">{pessoa.servidor}</span>
                       <span className="text-muted-foreground">{pessoa.empresa}</span>
@@ -276,7 +297,8 @@ export default function ConferenciaDetalheDialog({ funcao, retorno, onClose, pod
               <AlterarValorForm
                 key={pessoaEditada.posicao}
                 pessoa={pessoaEditada}
-                onSalvar={(centavos) => salvar(pessoaEditada, centavos)}
+                total={pessoas.length}
+                onSalvar={(centavos, alcance) => salvar(pessoaEditada, centavos, alcance)}
                 onCancelar={() => {
                   setEditando(null);
                   devolverFoco();
@@ -285,7 +307,7 @@ export default function ConferenciaDetalheDialog({ funcao, retorno, onClose, pod
             )}
 
             <DialogFooter className="items-start sm:items-center sm:justify-between">
-              <ExportButtons montar={() => tabelaDetalheFuncao(funcao)} nomeArquivo="detalhe-funcao" disabled={pendentes.length === 0} />
+              <ExportButtons montar={() => tabelaDetalheFuncao(funcao)} nomeArquivo="detalhe-funcao" disabled={pessoas.length === 0} />
               <DialogClose asChild>
                 <Button type="button" variant="outline">Fechar</Button>
               </DialogClose>

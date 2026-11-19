@@ -69,14 +69,22 @@ export default function TerceirizadosPorEmpresa({ rows, empresaFiltrada, onAbrir
         <CardTitle>Terceirizados por empresa</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
-          <fieldset className="flex min-w-0 flex-col gap-2">
-            <legend className="text-sm font-medium">Empresas ({resumoSelecao})</legend>
+        <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-3 lg:grid-cols-5 [&>*]:bg-card" aria-label={`Indicadores da seleção: ${resumoSelecao}`}>
+          <Indicador label="Pessoas" value={formatInt(kpis.quantidade)} />
+          <Indicador label="Remuneração" value={reais(kpis.remuneracao)} />
+          <Indicador label="Alimentação" value={reais(kpis.alimentacao)} />
+          <Indicador label="Custo mensal" value={reais(kpis.custo)} />
+          <Indicador label="Custo médio por pessoa" value={reais(kpis.custoMedio)} />
+        </dl>
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:items-start">
+          <fieldset className="flex min-w-0 flex-col">
+            <legend className="mb-3 text-sm font-medium">Empresas ({resumoSelecao})</legend>
+            <div className="flex flex-col gap-2 lg:h-80">
             <div className="relative">
               <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
               <Input id={buscaId} type="search" className="pl-9" placeholder="Buscar empresa" aria-label="Buscar empresa na lista" value={busca} onChange={(event) => setBusca(event.target.value)} />
             </div>
-            <ul className="max-h-56 overflow-auto rounded-lg border" aria-label="Empresas terceirizadas">
+            <ul className="max-h-56 min-h-0 overflow-auto rounded-lg border lg:max-h-none lg:flex-1" aria-label="Empresas terceirizadas">
               {visiveis.map((item) => {
                 const id = `${buscaId}-${item.empresa}`;
                 return (
@@ -91,7 +99,8 @@ export default function TerceirizadosPorEmpresa({ rows, empresaFiltrada, onAbrir
               })}
               {visiveis.length === 0 && <li className="px-3 py-4 text-sm text-muted-foreground">Nenhuma empresa encontrada.</li>}
             </ul>
-            <div className="flex flex-wrap gap-2">
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
               <Button type="button" size="sm" variant="outline" disabled={todas} onClick={() => setSelecionadas([])}>
                 Selecionar todas
               </Button>
@@ -99,18 +108,10 @@ export default function TerceirizadosPorEmpresa({ rows, empresaFiltrada, onAbrir
             </div>
           </fieldset>
 
-          <div className="flex min-w-0 flex-col gap-4">
-            <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-3 xl:grid-cols-5 [&>*]:bg-card" aria-label={`Indicadores da seleção: ${resumoSelecao}`}>
-              <Indicador label="Pessoas" value={formatInt(kpis.quantidade)} />
-              <Indicador label="Remuneração" value={reais(kpis.remuneracao)} />
-              <Indicador label="Alimentação" value={reais(kpis.alimentacao)} />
-              <Indicador label="Custo mensal" value={reais(kpis.custo)} />
-              <Indicador label="Custo médio por pessoa" value={reais(kpis.custoMedio)} />
-            </dl>
-
-            <div className="flex flex-col gap-2">
-              <h3 className="text-sm font-medium">Custo mensal por empresa</h3>
-              <ul className="max-h-72 overflow-auto rounded-lg border p-2" aria-label="Ranking de custo mensal por empresa">
+          <div className="flex min-w-0 flex-col">
+            <div className="flex flex-col">
+              <h3 className="mb-3 text-sm font-medium">Custo mensal por empresa</h3>
+              <ul className="max-h-72 overflow-auto rounded-lg border p-2 lg:h-80 lg:max-h-none" aria-label="Ranking de custo mensal por empresa">
                 {ranking.map((item) => {
                   const destaque = nomesEscolhidos.has(item.empresa);
                   const ligavel = item.empresa !== SEM_EMPRESA;
@@ -143,7 +144,7 @@ export default function TerceirizadosPorEmpresa({ rows, empresaFiltrada, onAbrir
                   );
                 })}
               </ul>
-              <p className="text-sm text-muted-foreground">Barras escuras: empresas da seleção. Os mesmos valores estão na tabela abaixo.</p>
+              <p className="mt-2 text-sm text-muted-foreground">Barras escuras: empresas da seleção. Os mesmos valores estão na tabela abaixo.</p>
             </div>
           </div>
         </div>

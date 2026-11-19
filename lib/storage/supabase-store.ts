@@ -246,6 +246,21 @@ export function createSupabaseStore(supabase: SupabaseClient): DataStore {
       if (!data) throw new Error(MSG_SO_ADMIN);
       return ajusteDeRow(data);
     },
+    async saveAjustes(lote) {
+      if (lote.length === 0) return [];
+      // Um único insert de várias linhas: o PostgREST grava tudo ou nada.
+      const { data, error } = await supabase
+        .from("ajustes_remuneracao")
+        .insert(lote.map((novo) => ({ importado_em: novo.importedAt, posicao: novo.posicao, origem: novo.origem, linha: novo.linha, valor_centavos: novo.valorCentavos })))
+        .select(COLUNAS_AJUSTE);
+      if (error) {
+        if (error.code === SEM_PERMISSAO) throw new Error(MSG_SO_ADMIN);
+        if (error.code === VALOR_INVALIDO && error.message) throw new Error(error.message);
+        throw new Error(MSG_FALHA_SALVAR);
+      }
+      if (!data || data.length !== lote.length) throw new Error(MSG_SO_ADMIN);
+      return (data as AjusteRow[]).map(ajusteDeRow);
+    },
     async loadAjustes(importedAt) {
       const { data, error } = await supabase.from("ajustes_remuneracao").select(COLUNAS_AJUSTE).eq("importado_em", importedAt).order("id", { ascending: false });
       if (error) fail("ler os ajustes de remuneração");

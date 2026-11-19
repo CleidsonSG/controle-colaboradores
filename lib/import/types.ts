@@ -140,6 +140,8 @@ export interface DataStore {
   clearHistorico(competencia?: Competencia): Promise<void>;
   /** Grava um ajuste de remuneração e devolve a linha com a auditoria preenchida. */
   saveAjuste(ajuste: NovoAjuste): Promise<AjusteRemuneracao>;
+  /** Grava vários ajustes de uma vez: tudo ou nada. */
+  saveAjustes(ajustes: NovoAjuste[]): Promise<AjusteRemuneracao[]>;
   /** Só o ajuste vigente (o mais recente) de cada posição daquela importação. */
   loadAjustes(importedAt: string): Promise<AjusteRemuneracao[]>;
 }

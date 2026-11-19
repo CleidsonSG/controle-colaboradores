@@ -107,13 +107,13 @@ const COLUNAS_PENDENCIA: ColunaExportacao[] = [
 
 const linhaPendencia = (p: PendenciaFuncao): Celula[] => [p.servidor, p.empresa, reais(p.valorReferencia), reais(p.valorInformado), p.motivo];
 
-/** Detalhe de uma função: as pessoas com divergência ou sem remuneração. */
+/** Detalhe de uma função: todas as pessoas, pendentes primeiro, com o motivo. */
 export function tabelaDetalheFuncao(funcao: FuncaoConferida): TabelaExportacao {
   return {
     titulo: `Detalhe da função: ${funcao.funcao}`,
     aba: "Detalhe da função",
     colunas: COLUNAS_PENDENCIA,
-    linhas: funcao.pendentes.map(linhaPendencia),
+    linhas: funcao.todas.map(linhaPendencia),
   };
 }
 

@@ -68,6 +68,14 @@ export function createMemoryStore(): DataStore {
       ajustes.push(linha);
       return { ...linha };
     },
+    async saveAjustes(lote) {
+      const planilha = (await load("planilha")) as StoredDataset<ColaboradorPlanilha> | null;
+      // Prepara tudo antes de gravar: qualquer falha deixa o conjunto intacto.
+      const preparadas = lote.map((novo) => prepararAjusteLocal(planilha, novo, ajustes.filter((a) => mesmoInstante(a.importedAt, novo.importedAt))));
+      const linhas = preparadas.map((linha): AjusteRemuneracao => ({ ...linha, id: proximoId++ }));
+      ajustes.push(...linhas);
+      return linhas.map((linha) => ({ ...linha }));
+    },
     async loadAjustes(importedAt) {
       return ajustesVigentes(ajustes.filter((a) => mesmoInstante(a.importedAt, importedAt))).map((a) => ({ ...a }));
     },

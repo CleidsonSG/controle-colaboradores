@@ -154,8 +154,10 @@ export function divergenciasParaCsv(grupos: GrupoConciliacao[]): string[][] {
 
 export const MOTIVO_DIVERGE = "Valor diferente da referência";
 export const MOTIVO_NAO_INFORMADA = "Remuneração não informada";
+export const MOTIVO_OK = "Ok";
+export const MOTIVO_SEM_REFERENCIA = "Sem referência";
 
-/** "sem-referencia" é só informativo (função sem valor na tabela): não conta como divergência e não abre detalhe. */
+/** "sem-referencia" (função sem valor na tabela) não conta como divergência, mas abre o detalhe para o admin informar o valor. */
 export type SituacaoFuncao = "confere" | "diverge" | "nao-informada" | "sem-referencia";
 
 export type PendenciaFuncao = {
@@ -172,6 +174,8 @@ export type PendenciaFuncao = {
   origem: Origem;
   linha: number;
   ajuste?: AjusteAplicado;
+  /** Diverge ou não informada (com referência): conta como "precisa de atenção". */
+  pendente: boolean;
 };
 
 export type FuncaoConferida = {
@@ -183,9 +187,18 @@ export type FuncaoConferida = {
   /** Valores informados distintos (centavos, crescente); mais de um = "Vários valores". */
   valoresInformados: number[];
   situacao: SituacaoFuncao;
-  /** Pessoas que divergem ou estão sem remuneração, por nome. Vazio quando não há detalhe a abrir. */
+  /** Pessoas que divergem ou estão sem remuneração, por nome. Vazio em função sem referência. */
   pendentes: PendenciaFuncao[];
+  /** Todas as pessoas da função: pendentes primeiro, depois as demais, cada grupo por nome. */
+  todas: PendenciaFuncao[];
 };
+
+function motivoDe(situacao: SituacaoRemuneracao): string {
+  if (situacao === "confere") return MOTIVO_OK;
+  if (situacao === "diverge") return MOTIVO_DIVERGE;
+  if (situacao === "nao-informada") return MOTIVO_NAO_INFORMADA;
+  return MOTIVO_SEM_REFERENCIA;
+}
 
 type Acumulador = { item: FuncaoConferida; informados: Set<number>; semReferencia: boolean; diverge: number; naoInformada: number };
 
@@ -197,7 +210,7 @@ export function agregarPorFuncao(rows: ColaboradorPlanilha[]): FuncaoConferida[]
     if (!situacao) continue;
     const chave = `${row.origem}|${chaveFuncao(row.funcao)}`;
     const acc = mapa.get(chave) ?? {
-      item: { origem: row.origem, funcao: row.funcao.trim() || SEM_FUNCAO_CONCILIACAO, pessoas: 0, valorReferencia: null, valoresInformados: [], situacao: "confere" as SituacaoFuncao, pendentes: [] },
+      item: { origem: row.origem, funcao: row.funcao.trim() || SEM_FUNCAO_CONCILIACAO, pessoas: 0, valorReferencia: null, valoresInformados: [], situacao: "confere" as SituacaoFuncao, pendentes: [], todas: [] },
       informados: new Set<number>(),
       semReferencia: false,
       diverge: 0,
@@ -209,22 +222,21 @@ export function agregarPorFuncao(rows: ColaboradorPlanilha[]): FuncaoConferida[]
     if (informado !== null) acc.informados.add(informado);
     if (referencia !== null) acc.item.valorReferencia = referencia;
     if (situacao === "sem-valor" || situacao === "fora-da-tabela") acc.semReferencia = true;
-    if (situacao === "diverge" || situacao === "nao-informada") {
-      if (situacao === "diverge") acc.diverge += 1;
-      else acc.naoInformada += 1;
-      acc.item.pendentes.push({
-        servidor: row.servidor,
-        matricula: row.matricula,
-        empresa: row.empresaSecretaria.trim() || SEM_EMPRESA_CONCILIACAO,
-        valorReferencia: referencia,
-        valorInformado: informado,
-        motivo: situacao === "diverge" ? MOTIVO_DIVERGE : MOTIVO_NAO_INFORMADA,
-        posicao,
-        origem: row.origem,
-        linha: row.linha,
-        ...(row.ajuste ? { ajuste: row.ajuste } : {}),
-      });
-    }
+    if (situacao === "diverge") acc.diverge += 1;
+    if (situacao === "nao-informada") acc.naoInformada += 1;
+    acc.item.todas.push({
+      servidor: row.servidor,
+      matricula: row.matricula,
+      empresa: row.empresaSecretaria.trim() || SEM_EMPRESA_CONCILIACAO,
+      valorReferencia: referencia,
+      valorInformado: informado,
+      motivo: motivoDe(situacao),
+      posicao,
+      origem: row.origem,
+      linha: row.linha,
+      pendente: situacao === "diverge" || situacao === "nao-informada",
+      ...(row.ajuste ? { ajuste: row.ajuste } : {}),
+    });
     mapa.set(chave, acc);
   }
   const lista = [...mapa.values()].map((acc) => {
@@ -232,11 +244,12 @@ export function agregarPorFuncao(rows: ColaboradorPlanilha[]): FuncaoConferida[]
     item.valoresInformados = [...acc.informados].sort((a, b) => a - b);
     if (item.valorReferencia === null) {
       item.situacao = acc.semReferencia ? "sem-referencia" : "nao-informada";
-      if (acc.semReferencia) item.pendentes = [];
+      if (acc.semReferencia) for (const p of item.todas) p.pendente = false;
     } else {
       item.situacao = acc.diverge > 0 ? "diverge" : acc.naoInformada > 0 ? "nao-informada" : "confere";
     }
-    item.pendentes.sort((a, b) => porTexto(a.servidor, b.servidor));
+    item.todas.sort((a, b) => Number(b.pendente) - Number(a.pendente) || porTexto(a.servidor, b.servidor));
+    item.pendentes = item.todas.filter((p) => p.pendente);
     return item;
   });
   return lista.sort((a, b) => porTexto(a.funcao, b.funcao) || porTexto(a.origem, b.origem));

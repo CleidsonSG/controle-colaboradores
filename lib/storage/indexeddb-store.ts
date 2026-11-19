@@ -173,6 +173,33 @@ export function createIndexedDbStore(): DataStore {
       await done;
       return { ...linha, id };
     },
+    async saveAjustes(lote) {
+      if (lote.length === 0) return [];
+      const db = await openDb();
+      const transaction = db.transaction([STORE_BY_KIND.planilha, AJUSTES_STORE], "readwrite");
+      const done = transactionDone(transaction);
+      try {
+        const planilha = ((await requestToPromise(transaction.objectStore(STORE_BY_KIND.planilha).get(DATASET_KEY))) ?? null) as StoredDataset<ColaboradorPlanilha> | null;
+        const ajustes = transaction.objectStore(AJUSTES_STORE);
+        const linhas: Omit<AjusteRemuneracao, "id">[] = [];
+        for (const novo of lote) {
+          const anteriores = (await requestToPromise(ajustes.index("porImportacao").getAll(IDBKeyRange.only([novo.importedAt, novo.posicao])))) as AjusteRemuneracao[];
+          linhas.push(prepararAjusteLocal(planilha, novo, anteriores));
+        }
+        const gravadas: AjusteRemuneracao[] = [];
+        for (const linha of linhas) gravadas.push({ ...linha, id: Number(await requestToPromise(ajustes.add(linha))) });
+        await done;
+        return gravadas;
+      } catch (error) {
+        try {
+          transaction.abort();
+        } catch {
+          // transação já encerrada
+        }
+        await done.catch(() => undefined);
+        throw error;
+      }
+    },
     async loadAjustes(importedAt) {
       const db = await openDb();
       const index = db.transaction(AJUSTES_STORE, "readonly").objectStore(AJUSTES_STORE).index("porImportacao");
