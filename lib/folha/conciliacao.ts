@@ -234,7 +234,7 @@ export function agregarPorFuncao(rows: ColaboradorPlanilha[]): FuncaoConferida[]
       posicao,
       origem: row.origem,
       linha: row.linha,
-      pendente: situacao === "diverge" || situacao === "nao-informada",
+      pendente: situacao !== "confere",
       ...(row.ajuste ? { ajuste: row.ajuste } : {}),
     });
     mapa.set(chave, acc);
@@ -244,7 +244,6 @@ export function agregarPorFuncao(rows: ColaboradorPlanilha[]): FuncaoConferida[]
     item.valoresInformados = [...acc.informados].sort((a, b) => a - b);
     if (item.valorReferencia === null) {
       item.situacao = acc.semReferencia ? "sem-referencia" : "nao-informada";
-      if (acc.semReferencia) for (const p of item.todas) p.pendente = false;
     } else {
       item.situacao = acc.diverge > 0 ? "diverge" : acc.naoInformada > 0 ? "nao-informada" : "confere";
     }
@@ -255,5 +254,5 @@ export function agregarPorFuncao(rows: ColaboradorPlanilha[]): FuncaoConferida[]
   return lista.sort((a, b) => porTexto(a.funcao, b.funcao) || porTexto(a.origem, b.origem));
 }
 
-/** Funções com pessoas a conferir (divergência ou sem remuneração): as que abrem o detalhe. */
-export const precisaAtencao = (funcao: FuncaoConferida) => funcao.situacao === "diverge" || funcao.situacao === "nao-informada";
+/** Funções com pessoas a conferir (divergência, sem remuneração ou sem referência na tabela): entram em "precisam de atenção" e no export de divergências. */
+export const precisaAtencao = (funcao: FuncaoConferida) => funcao.situacao !== "confere";

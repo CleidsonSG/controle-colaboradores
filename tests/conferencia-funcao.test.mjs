@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import ExcelJS from "exceljs";
-import { agregarPorFuncao, conciliarRemuneracao, MOTIVO_DIVERGE, MOTIVO_NAO_INFORMADA, precisaAtencao } from "../lib/folha/conciliacao.ts";
+import { agregarPorFuncao, conciliarRemuneracao, MOTIVO_DIVERGE, MOTIVO_NAO_INFORMADA, MOTIVO_SEM_REFERENCIA, precisaAtencao } from "../lib/folha/conciliacao.ts";
 import { gerarPdfTabela, gerarXlsxTabela, tabelaDetalheFuncao, tabelaDivergencias } from "../lib/export-funcionarios.ts";
 
 const p = (servidor, funcao, remuneracao, empresa = "Empresa Exemplo", origem = "Terceirizado") => ({
@@ -51,15 +51,16 @@ test("mais de um valor informado vira 'Vários valores' (lista com 3 distintos)"
   assert.deepEqual(por("FUNÇÃO EXEMPLO C").valoresInformados, [100000]);
 });
 
-test("sem referência não conta como divergência e não abre detalhe", () => {
+test("sem referência precisa de atenção e entra nas divergências, com motivo próprio", () => {
   for (const nome of ["FUNÇÃO EXEMPLO D", "FUNÇÃO EXEMPLO E"]) {
     const f = por(nome);
     assert.equal(f.situacao, "sem-referencia");
     assert.equal(f.valorReferencia, null);
-    assert.equal(precisaAtencao(f), false);
-    assert.deepEqual(f.pendentes, []);
+    assert.equal(precisaAtencao(f), true);
+    assert.deepEqual(f.pendentes.map((x) => x.motivo), [MOTIVO_SEM_REFERENCIA]);
   }
-  assert.equal(funcoes.filter(precisaAtencao).length, 2);
+  assert.equal(funcoes.filter(precisaAtencao).length, 4);
+  assert.equal(precisaAtencao(por("FUNÇÃO EXEMPLO C")), false);
   assert.equal(por("FUNÇÃO EXEMPLO C").situacao, "confere");
 });
 

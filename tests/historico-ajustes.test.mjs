@@ -202,6 +202,6 @@ test("detalhe da função lista todas as pessoas: pendentes primeiro, com motivo
   assert.equal(funcao.pendentes.length, 2);
   const [semRef] = agregarPorFuncao(conciliarRemuneracao(records, []).rows);
   assert.equal(semRef.situacao, "sem-referencia");
-  assert.equal(semRef.pendentes.length, 0);
+  assert.equal(semRef.pendentes.length, 3);
   assert.ok(semRef.todas.some((p) => p.motivo === "Sem referência"));
 });
