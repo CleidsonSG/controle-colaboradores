@@ -1,6 +1,6 @@
 # Estado do projeto — Controle de Colaboradores
 
-**Atualizado em:** 2026-11-17  
+**Atualizado em:** 2026-11-19  
 **Pasta:** `Controle_Colaboradores`  
 **Plano:** [controle-colaboradores.md](./controle-colaboradores.md)
 
@@ -162,3 +162,7 @@ Especificação em `docs/features/aba-funcionarios.md` (product-manager; 9 ajust
 - `security-auditor`: sem crítico/alto. Achados 1–4 corrigidos na própria migration (`56ed53e`: is_admin antes do jsonb + teto de 15 MB, `importado_em` ≤ now(), valor ≥ 1 centavo, 42501 no gatilho). Abertos (baixo): prazo de retenção do histórico/auditoria, concorrência entre dois admins (`pg_advisory_xact_lock`).
 - E2E sintético (Playwright, IndexedDB): itens 1–5 aprovados; capturas em `.preview/fatias3-5/`. As capturas "escuro" saíram claras (tema "Sistema" no headless), então o axe no escuro não valeu.
 - H9 "Sim, publicar" (2026-11-18). **Pendente com o usuário:** rodar `supabase/migrations/20261118120000_historico_competencias.sql` no SQL Editor (sem isso, o site publicado abre sem histórico e sem ajustes).
+
+## Correções1 da aba Funcionários (2026-11-19, PUBLICADO como `10b4203`, deployment success, HTTP 200)
+Fonte: `ARQUIVOS DE EXEMPLO/ABA FUNCIONÁRIOS CORREÇÕES1.docx`. Toda Situação da conferência (Ok/Diverge/Sem referência) é botão e abre o detalhe; "Confere" → "Ok"; detalhe lista todas as pessoas da função (pendentes primeiro); "Alterar valor" com alcance "Somente esta pessoa" / "Todas as N pessoas da função" (`DataStore.saveAjustes`, gravação em lote tudo-ou-nada, sem mudança de schema); menu único "Exportar" (Excel/PDF, `components/ui/dropdown-menu.tsx`); Terceirizados por empresa com KPIs no topo e filtro alinhado ao ranking; nome acessível do ranking corrigido (WCAG 2.5.3). Validação: lint/tipos limpos, 134 pass/0 fail, build OK; E2E sintético (IndexedDB) aprovado, axe 0 violações; capturas em `.preview/correcoes1/`.
+Pendências: "Sem referência" não entra em `precisaAtencao` nem no export de divergências (decisão a confirmar com o usuário); lote no Supabase não testado contra banco real; usuário ainda precisa rodar `supabase/migrations/20261118120000_historico_competencias.sql`.
