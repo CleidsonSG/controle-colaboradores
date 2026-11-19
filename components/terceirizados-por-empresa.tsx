@@ -132,10 +132,10 @@ export default function TerceirizadosPorEmpresa({ rows, empresaFiltrada, onAbrir
                         <button
                           type="button"
                           className={cn("flex w-full flex-col gap-1.5 rounded-md px-2 py-1.5 text-left hover:bg-muted/60", empresaFiltrada === item.empresa && "bg-muted")}
-                          aria-label={`${item.empresa}: custo mensal ${reais(item.custo)}, ${formatInt(item.quantidade)} pessoas. Filtrar a tabela de funcionários por esta empresa`}
                           onClick={() => abrir(item)}
                         >
                           {conteudo}
+                          <span className="sr-only">{`, custo mensal de ${formatInt(item.quantidade)} pessoas. Filtrar a tabela de funcionários por esta empresa`}</span>
                         </button>
                       ) : (
                         <div className="flex w-full flex-col gap-1.5 px-2 py-1.5">{conteudo}</div>
